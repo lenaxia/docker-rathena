@@ -1,4 +1,5 @@
-FROM alpine:3.7
+# Use a more recent base image
+FROM alpine:3.17
 
 LABEL title="rAthena - Dockerized server" \
   maintainer="Carlos Milán Figueredo" \
@@ -38,26 +39,47 @@ LABEL DOWNLOAD_OVERRIDE_CONF_URL="If defined, it will download a ZIP file with t
 ENV PACKETVER=20151029 \
   PACKET_OBFUSCATION=1
 
-RUN mkdir -p /opt/rAthena \
-    && apk update \
-    && apk add --no-cache git make gcc g++ mariadb-dev mariadb-client-libs zlib-dev pcre-dev libressl-dev pcre libstdc++ nano dos2unix mysql-client bind-tools linux-headers \
-    && git clone https://github.com/rathena/rathena.git /opt/rAthena \
-    && cd /opt/rAthena \
-    && if [ ${PACKET_OBFUSCATION} -neq 1 ]; then sed -i "s|#define PACKET_OBFUSCATION|//#define PACKET_OBFUSCATION|g" /opt/rAthena/src/config/packets.hpp; fi \
-    && if [ ${PACKET_OBFUSCATION} -neq 1 ]; then sed -i "s|#define PACKET_OBFUSCATION_WARN|//#define PACKET_OBFUSCATION_WARN|g" /opt/rAthena/src/config/packets.hpp; fi \
+# Install dependencies
+RUN apk add --no-cache \
+    git \
+    make \
+    gcc \
+    g++ \
+    mariadb-dev \
+    mariadb-client-libs \
+    zlib-dev \
+    pcre-dev \
+    libressl-dev \
+    pcre \
+    libstdc++ \
+    nano \
+    dos2unix \
+    mysql-client \
+    bind-tools \
+    linux-headers
+
+# Clone the rAthena repository
+RUN git clone https://github.com/rathena/rathena.git /opt/rAthena
+
+# Build the rAthena server
+WORKDIR /opt/rAthena
+RUN if [ ${PACKET_OBFUSCATION} -neq 1 ]; then \
+        sed -i "s|#define PACKET_OBFUSCATION|//#define PACKET_OBFUSCATION|g" /opt/rAthena/src/config/packets.hpp; \
+        sed -i "s|#define PACKET_OBFUSCATION_WARN|//#define PACKET_OBFUSCATION_WARN|g" /opt/rAthena/src/config/packets.hpp; \
+    fi \
     && ./configure --enable-packetver=${PACKETVER} \
     && make clean \
     && make server \
-    && chmod a+x login-server && chmod a+x char-server && chmod a+x map-server \
-    && apk del git make gcc g++ mariadb-dev zlib-dev pcre-dev libressl-dev
+    && chmod a+x login-server char-server map-server
 
+# Copy additional files
 COPY docker-entrypoint.sh /usr/local/bin/
 COPY accountsandchars.sql /root/
 COPY gab_npc.txt /opt/rAthena/npc/custom/
 
+# Expose ports
 EXPOSE 6900/tcp 6121/tcp 5121/tcp
 
+# Set entrypoint and default command
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-
-WORKDIR /opt/rAthena
 CMD ["/opt/rAthena/athena-start", "watch"]
