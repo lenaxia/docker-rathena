@@ -54,7 +54,7 @@ RUN apt-get update && \
     dos2unix \
     default-mysql-client \
     bind9-dnsutils \
-    linux-headers-$(uname -r)
+    linux-headers-generic
 
 # Clone the rAthena repository
 RUN git clone https://github.com/rathena/rathena.git /opt/rAthena
