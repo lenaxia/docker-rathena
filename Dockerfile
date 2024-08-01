@@ -47,8 +47,7 @@ RUN apt-get update && \
     gcc \
     g++ \
     libmariadb-dev \
-    libmariadbclient-dev \
-    libmariadbclient-dev-compat \
+    libmariadb-dev-compat \
     zlib1g-dev \
     libpcre3-dev \
     nano \
