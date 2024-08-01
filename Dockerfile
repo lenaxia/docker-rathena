@@ -46,7 +46,7 @@ RUN apk add --no-cache \
     gcc \
     g++ \
     mariadb-dev \
-    mariadb-client-libs \
+    mariadb-connector-c-dev \
     zlib-dev \
     pcre-dev \
     libressl-dev \
