@@ -1,0 +1,23 @@
+services:
+  rathena:
+    image: ghcr.io/lenaxia/docker-rathena:latest
+    ports:
+      - 6900:6900
+      - 6121:6121
+      - 5121:5121
+    restart: unless-stopped
+    environment:
+      - MYSQL_PWD=ragnarok
+      - SET_INTERSRV_PASSWD=test123
+      - MYSQL_HOST=192.168.5.15
+      - MYSQL_USER=ragnarok
+      - MYSQL_DB=rathena_renewal
+      - SET_SERVER_NAME=rAthena
+      - SET_INTERSRV_USERID=user1
+      - MYSQL_DROP_DB=1
+      - SET_PINCODE_ENABLED=no
+      - SET_START_POINT=prontera,155,182
+      - ADD_SUBNET_MAP1=255.255.255.0:192.168.2.102:192.168.2.102
+      - SET_CHAR_PUBLIC_IP=192.168.2.102
+      - SET_MAP_PUBLIC_IP=192.168.2.102
+      - MYSQL_ACCOUNTSANDCHARS=1

@@ -13,7 +13,7 @@ echo "Initalizing Docker container..."
 
 check_database_exist () {
     RESULT=`mysqlshow --user=${MYSQL_USER} --password=${MYSQL_PWD} --host=${MYSQL_HOST} ${MYSQL_DB} | grep -v Wildcard | grep -o ${MYSQL_DB}`
-    if [ "$RESULT" == "${MYSQL_DB}" ]; then
+    if [ "$RESULT" = "${MYSQL_DB}" ]; then
         return 0;
     else
         return 1;
@@ -21,57 +21,57 @@ check_database_exist () {
 }
 
 setup_init () {
-    if ! [ -z "${SET_MOTD}" ]; then echo -e "${SET_MOTD}" > /opt/rAthena/conf/motd.txt; fi
+    if ! [ -z "${SET_MOTD}" ]; then printf "%s\n" "${SET_MOTD}" > /opt/rAthena/conf/motd.txt; fi
     setup_mysql_config
     setup_config
     enable_custom_npc
 }
 
 setup_mysql_config () {
-    echo "###### MySQL setup ######"
-    if [ -z "${MYSQL_HOST}" ]; then echo "Missing MYSQL_HOST environment variable. Unable to continue."; exit 1; fi
-    if [ -z "${MYSQL_DB}" ]; then echo "Missing MYSQL_DB environment variable. Unable to continue."; exit 1; fi
-    if [ -z "${MYSQL_USER}" ]; then echo "Missing MYSQL_USER environment variable. Unable to continue."; exit 1; fi
-    if [ -z "${MYSQL_PWD}" ]; then echo "Missing MYSQL_PWD environment variable. Unable to continue."; exit 1; fi
+    printf "###### MySQL setup ######\n"
+    if [ -z "${MYSQL_HOST}" ]; then printf "Missing MYSQL_HOST environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_DB}" ]; then printf "Missing MYSQL_DB environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_USER}" ]; then printf "Missing MYSQL_USER environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_PWD}" ]; then printf "Missing MYSQL_PWD environment variable. Unable to continue.\n"; exit 1; fi
 
-    echo "Setting up MySQL on Login Server..."
-    echo -e "use_sql_db: yes\n\n" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "login_server_ip: ${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "login_server_db: ${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "login_server_id: ${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "login_server_pw: ${MYSQL_PWD}\n" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "Setting up MySQL on Login Server...\n"
+    printf "use_sql_db: yes\n\n" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "login_server_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "login_server_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "login_server_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "login_server_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
 
-    echo "Setting up MySQL on Map Server..."
-    echo -e "map_server_ip: ${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "map_server_db: ${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "map_server_id: ${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "map_server_pw: ${MYSQL_PWD}\n" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "Setting up MySQL on Map Server...\n"
+    printf "map_server_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "map_server_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "map_server_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "map_server_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
 
-    echo "Setting up MySQL on Char Server..."
-    echo -e "char_server_ip: ${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "char_server_db: ${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "char_server_id: ${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "char_server_pw: ${MYSQL_PWD}\n" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "Setting up MySQL on Char Server...\n"
+    printf "char_server_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "char_server_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "char_server_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "char_server_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
 
-    echo "Setting up MySQL on IP ban..."
-    echo -e "ipban_db_ip: ${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "ipban_db_db: ${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "ipban_db_id: ${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "ipban_db_pw: ${MYSQL_PWD}\n" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "Setting up MySQL on IP ban...\n"
+    printf "ipban_db_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "ipban_db_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "ipban_db_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "ipban_db_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
 
-    echo "Setting up MySQL on log..."
-    echo -e "log_db_ip: ${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "log_db_db: ${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "log_db_id: ${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    echo -e "log_db_pw: ${MYSQL_PWD}\n" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "Setting up MySQL on log...\n"
+    printf "log_db_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "log_db_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "log_db_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
+    printf "log_db_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
 
-    echo "DROP FOUND, REMOVING EXISTING DATABASE..."
+    printf "DROP FOUND, REMOVING EXISTING DATABASE...\n"
     if ! [ -z ${MYSQL_DROP_DB} ]; then
         if [ ${MYSQL_DROP_DB} -ne 0 ]; then
             mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -e "DROP DATABASE ${MYSQL_DB};"
         fi
     fi
-    echo "Checking if database already exists..."
+    printf "Checking if database already exists...\n"
     if ! check_database_exist; then
         mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -e "CREATE DATABASE ${MYSQL_DB};"
         mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D${MYSQL_DB} < /opt/rAthena/sql-files/main.sql
@@ -99,43 +99,43 @@ setup_mysql_config () {
 }
 
 setup_config () {
-    if ! [ -z "${SET_INTERSRV_USERID}" ]; then 
-        echo -e "userid: ${SET_INTERSRV_USERID}" >> /opt/rAthena/conf/import/map_conf.txt
-        echo -e "userid: ${SET_INTERSRV_USERID}" >> /opt/rAthena/conf/import/char_conf.txt
+    if ! [ -z "${SET_INTERSRV_USERID}" ]; then
+        printf "userid: %s\n" "${SET_INTERSRV_USERID}" >> /opt/rAthena/conf/import/map_conf.txt
+        printf "userid: %s\n" "${SET_INTERSRV_USERID}" >> /opt/rAthena/conf/import/char_conf.txt
     fi
-    if ! [ -z "${SET_INTERSRV_PASSWD}" ]; then 
-        echo -e "passwd: ${SET_INTERSRV_PASSWD}" >> /opt/rAthena/conf/import/map_conf.txt
-        echo -e "passwd: ${SET_INTERSRV_PASSWD}" >> /opt/rAthena/conf/import/char_conf.txt
+    if ! [ -z "${SET_INTERSRV_PASSWD}" ]; then
+        printf "passwd: %s\n" "${SET_INTERSRV_PASSWD}" >> /opt/rAthena/conf/import/map_conf.txt
+        printf "passwd: %s\n" "${SET_INTERSRV_PASSWD}" >> /opt/rAthena/conf/import/char_conf.txt
     fi
-    
-    if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then echo -e "login_ip: ${SET_CHAR_TO_LOGIN_IP}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_CHAR_PUBLIC_IP}" ]; then echo -e "char_ip: ${SET_CHAR_PUBLIC_IP}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_MAP_TO_CHAR_IP}" ]; then echo -e "char_ip: ${SET_MAP_TO_CHAR_IP}" >> /opt/rAthena/conf/import/map_conf.txt; fi
-    if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then echo -e "map_ip: ${SET_MAP_PUBLIC_IP}" >> /opt/rAthena/conf/import/map_conf.txt; fi
-    if ! [ -z "${ADD_SUBNET_MAP1}" ]; then echo -e "subnet: ${ADD_SUBNET_MAP1}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP2}" ]; then echo -e "subnet: ${ADD_SUBNET_MAP2}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP3}" ]; then echo -e "subnet: ${ADD_SUBNET_MAP3}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP4}" ]; then echo -e "subnet: ${ADD_SUBNET_MAP4}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP5}" ]; then echo -e "subnet: ${ADD_SUBNET_MAP5}" >> /opt/rAthena/conf/subnet_athena.conf; fi
 
-    if ! [ -z "${SET_SERVER_NAME}" ]; then echo -e "server_name: ${SET_SERVER_NAME}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_MAX_CONNECT_USER}" ]; then echo -e "max_connect_user: ${SET_MAX_CONNECT_USER}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_ZENNY}" ]; then echo -e "start_zenny: ${SET_START_ZENNY}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_POINT}" ]; then echo -e "start_point: ${SET_START_POINT}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_POINT_PRE}" ]; then echo -e "start_point_pre: ${SET_START_POINT_PRE}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_POINT_DORAM}" ]; then echo -e "start_point_doram: ${SET_START_POINT_DORAM}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_ITEMS}" ]; then echo -e "start_items: ${SET_START_ITEMS}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_ITEMS_DORAM}" ]; then echo -e "start_items_doram: ${SET_START_ITEMS_DORAM}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_PINCODE_ENABLED}" ]; then echo -e "pincode_enabled: ${SET_PINCODE_ENABLED}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then printf "login_ip: %s\n" "${SET_CHAR_TO_LOGIN_IP}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_CHAR_PUBLIC_IP}" ]; then printf "char_ip: %s\n" "${SET_CHAR_PUBLIC_IP}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_MAP_TO_CHAR_IP}" ]; then printf "char_ip: %s\n" "${SET_MAP_TO_CHAR_IP}" >> /opt/rAthena/conf/import/map_conf.txt; fi
+    if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then printf "map_ip: %s\n" "${SET_MAP_PUBLIC_IP}" >> /opt/rAthena/conf/import/map_conf.txt; fi
+    if ! [ -z "${ADD_SUBNET_MAP1}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP1}" >> /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP2}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP2}" >> /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP3}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP3}" >> /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP4}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP4}" >> /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP5}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP5}" >> /opt/rAthena/conf/subnet_athena.conf; fi
 
-    if ! [ -z "${SET_ALLOWED_REGS}" ]; then echo -e "allowed_regs: ${SET_ALLOWED_REGS}" >> /opt/rAthena/conf/import/login_conf.txt; fi
-    if ! [ -z "${SET_TIME_ALLOWED}" ]; then echo -e "time_allowed: ${SET_TIME_ALLOWED}" >> /opt/rAthena/conf/import/login_conf.txt; fi
+    if ! [ -z "${SET_SERVER_NAME}" ]; then printf "server_name: %s\n" "${SET_SERVER_NAME}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_MAX_CONNECT_USER}" ]; then printf "max_connect_user: %s\n" "${SET_MAX_CONNECT_USER}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_START_ZENNY}" ]; then printf "start_zenny: %s\n" "${SET_START_ZENNY}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_START_POINT}" ]; then printf "start_point: %s\n" "${SET_START_POINT}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_START_POINT_PRE}" ]; then printf "start_point_pre: %s\n" "${SET_START_POINT_PRE}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_START_POINT_DORAM}" ]; then printf "start_point_doram: %s\n" "${SET_START_POINT_DORAM}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_START_ITEMS}" ]; then printf "start_items: %s\n" "${SET_START_ITEMS}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_START_ITEMS_DORAM}" ]; then printf "start_items_doram: %s\n" "${SET_START_ITEMS_DORAM}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_PINCODE_ENABLED}" ]; then printf "pincode_enabled: %s\n" "${SET_PINCODE_ENABLED}" >> /opt/rAthena/conf/import/char_conf.txt; fi
 
-    if ! [ -z "${SET_ARROW_DECREMENT}" ]; then echo -e "arrow_decrement: ${SET_ARROW_DECREMENT}" >> /opt/rAthena/conf/import/battle_conf.txt; fi
+    if ! [ -z "${SET_ALLOWED_REGS}" ]; then printf "allowed_regs: %s\n" "${SET_ALLOWED_REGS}" >> /opt/rAthena/conf/import/login_conf.txt; fi
+    if ! [ -z "${SET_TIME_ALLOWED}" ]; then printf "time_allowed: %s\n" "${SET_TIME_ALLOWED}" >> /opt/rAthena/conf/import/login_conf.txt; fi
+
+    if ! [ -z "${SET_ARROW_DECREMENT}" ]; then printf "arrow_decrement: %s\n" "${SET_ARROW_DECREMENT}" >> /opt/rAthena/conf/import/battle_conf.txt; fi
 }
 
 enable_custom_npc () {
-    echo -e "npc: npc/custom/gab_npc.txt" >> /opt/rAthena/npc/scripts_custom.conf
+    printf "npc: npc/custom/gab_npc.txt\n" >> /opt/rAthena/npc/scripts_custom.conf
 }
 
 #PUBLICIP=$(dig +short myip.opendns.com @resolver1.opendns.com)
