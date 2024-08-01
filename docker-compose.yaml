@@ -14,7 +14,7 @@ services:
       - MYSQL_DB=rathena_renewal
       - SET_SERVER_NAME=rAthena
       - SET_INTERSRV_USERID=user1
-      - MYSQL_DROP_DB=1
+      - MYSQL_DROP_DB=0
       - SET_PINCODE_ENABLED=no
       - SET_START_POINT=prontera,155,182
       - ADD_SUBNET_MAP1=255.255.255.0:192.168.2.102:192.168.2.102

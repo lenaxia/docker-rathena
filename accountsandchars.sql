@@ -1,4 +1,3 @@
-USE rathena;
 -- ###### PROCEDURES AND FUNCTIONS ######
 DROP FUNCTION IF EXISTS getRandomSex;
 DROP PROCEDURE IF EXISTS createBotAccounts;
