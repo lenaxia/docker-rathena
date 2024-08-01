@@ -1,5 +1,5 @@
-# Use a more recent base image
-FROM alpine:3.17
+# Use Ubuntu 24.04 as the base image
+FROM ubuntu:24.04
 
 LABEL title="rAthena - Dockerized server" \
   maintainer="Carlos Milán Figueredo" \
@@ -39,24 +39,23 @@ LABEL DOWNLOAD_OVERRIDE_CONF_URL="If defined, it will download a ZIP file with t
 ENV PACKETVER=20151029 \
   PACKET_OBFUSCATION=1
 
-# Install dependencies
-RUN apk add --no-cache \
+# Update package lists and install dependencies
+RUN apt-get update && \
+    apt-get install -y \
     git \
     make \
     gcc \
     g++ \
-    mariadb-dev \
-    mariadb-connector-c-dev \
-    zlib-dev \
-    pcre-dev \
-    libressl-dev \
-    pcre \
-    libstdc++ \
+    libmariadb-dev \
+    libmariadbclient-dev \
+    libmariadbclient-dev-compat \
+    zlib1g-dev \
+    libpcre3-dev \
     nano \
     dos2unix \
-    mysql-client \
-    bind-tools \
-    linux-headers
+    default-mysql-client \
+    bind9-dnsutils \
+    linux-headers-$(uname -r)
 
 # Clone the rAthena repository
 RUN git clone https://github.com/rathena/rathena.git /opt/rAthena
@@ -70,7 +69,7 @@ RUN if [ ${PACKET_OBFUSCATION} -neq 1 ]; then \
     && ./configure --enable-packetver=${PACKETVER} \
     && make clean \
     && make server \
-    && chmod a+x login-server char-server map-server
+    && chmod a+x login-server char-server map-server web-server
 
 # Copy additional files
 COPY docker-entrypoint.sh /usr/local/bin/
