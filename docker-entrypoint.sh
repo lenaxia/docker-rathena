@@ -35,35 +35,35 @@ setup_mysql_config () {
     if [ -z "${MYSQL_PWD}" ]; then printf "Missing MYSQL_PWD environment variable. Unable to continue.\n"; exit 1; fi
 
     printf "Setting up MySQL on Login Server...\n"
-    printf "use_sql_db: yes\n\n" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "login_server_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "login_server_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "login_server_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "login_server_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
+    sed -i "s/^use_sql_db:.*/use_sql_db: yes/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_ip:.*/login_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_db:.*/login_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_id:.*/login_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_pw:.*/login_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on Map Server...\n"
-    printf "map_server_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "map_server_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "map_server_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "map_server_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
+    sed -i "s/^map_server_ip:.*/map_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_db:.*/map_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_id:.*/map_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_pw:.*/map_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on Char Server...\n"
-    printf "char_server_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "char_server_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "char_server_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "char_server_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
+    sed -i "s/^char_server_ip:.*/char_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_db:.*/char_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_id:.*/char_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_pw:.*/char_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on IP ban...\n"
-    printf "ipban_db_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "ipban_db_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "ipban_db_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "ipban_db_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
+    sed -i "s/^ipban_db_ip:.*/ipban_db_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_db:.*/ipban_db_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_id:.*/ipban_db_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_pw:.*/ipban_db_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on log...\n"
-    printf "log_db_ip: %s\n" "${MYSQL_HOST}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "log_db_db: %s\n" "${MYSQL_DB}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "log_db_id: %s\n" "${MYSQL_USER}" >> /opt/rAthena/conf/import/inter_conf.txt
-    printf "log_db_pw: %s\n\n" "${MYSQL_PWD}" >> /opt/rAthena/conf/import/inter_conf.txt
+    sed -i "s/^log_db_ip:.*/log_db_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_db:.*/log_db_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_id:.*/log_db_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_pw:.*/log_db_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "DROP FOUND, REMOVING EXISTING DATABASE...\n"
     if ! [ -z ${MYSQL_DROP_DB} ]; then
@@ -100,38 +100,38 @@ setup_mysql_config () {
 
 setup_config () {
     if ! [ -z "${SET_INTERSRV_USERID}" ]; then
-        printf "userid: %s\n" "${SET_INTERSRV_USERID}" >> /opt/rAthena/conf/import/map_conf.txt
-        printf "userid: %s\n" "${SET_INTERSRV_USERID}" >> /opt/rAthena/conf/import/char_conf.txt
+        sed -i "s/^userid:.*/userid: ${SET_INTERSRV_USERID}/" /opt/rAthena/conf/map_athena.conf
+        sed -i "s/^userid:.*/userid: ${SET_INTERSRV_USERID}/" /opt/rAthena/conf/char_athena.conf
     fi
     if ! [ -z "${SET_INTERSRV_PASSWD}" ]; then
-        printf "passwd: %s\n" "${SET_INTERSRV_PASSWD}" >> /opt/rAthena/conf/import/map_conf.txt
-        printf "passwd: %s\n" "${SET_INTERSRV_PASSWD}" >> /opt/rAthena/conf/import/char_conf.txt
+        sed -i "s/^passwd:.*/passwd: ${SET_INTERSRV_PASSWD}/" /opt/rAthena/conf/map_athena.conf
+        sed -i "s/^passwd:.*/passwd: ${SET_INTERSRV_PASSWD}/" /opt/rAthena/conf/char_athena.conf
     fi
 
-    if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then printf "login_ip: %s\n" "${SET_CHAR_TO_LOGIN_IP}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_CHAR_PUBLIC_IP}" ]; then printf "char_ip: %s\n" "${SET_CHAR_PUBLIC_IP}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_MAP_TO_CHAR_IP}" ]; then printf "char_ip: %s\n" "${SET_MAP_TO_CHAR_IP}" >> /opt/rAthena/conf/import/map_conf.txt; fi
-    if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then printf "map_ip: %s\n" "${SET_MAP_PUBLIC_IP}" >> /opt/rAthena/conf/import/map_conf.txt; fi
-    if ! [ -z "${ADD_SUBNET_MAP1}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP1}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP2}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP2}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP3}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP3}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP4}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP4}" >> /opt/rAthena/conf/subnet_athena.conf; fi
-    if ! [ -z "${ADD_SUBNET_MAP5}" ]; then printf "subnet: %s\n" "${ADD_SUBNET_MAP5}" >> /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then sed -i "s/^login_ip:.*/login_ip: ${SET_CHAR_TO_LOGIN_IP}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_CHAR_PUBLIC_IP}" ]; then sed -i "s/^char_ip:.*/char_ip: ${SET_CHAR_PUBLIC_IP}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_MAP_TO_CHAR_IP}" ]; then sed -i "s/^char_ip:.*/char_ip: ${SET_MAP_TO_CHAR_IP}/" /opt/rAthena/conf/map_athena.conf; fi
+    if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then sed -i "s/^map_ip:.*/map_ip: ${SET_MAP_PUBLIC_IP}/" /opt/rAthena/conf/map_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP1}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP1}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP2}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP2}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP3}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP3}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP4}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP4}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP5}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP5}/" /opt/rAthena/conf/subnet_athena.conf; fi
 
-    if ! [ -z "${SET_SERVER_NAME}" ]; then printf "server_name: %s\n" "${SET_SERVER_NAME}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_MAX_CONNECT_USER}" ]; then printf "max_connect_user: %s\n" "${SET_MAX_CONNECT_USER}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_ZENNY}" ]; then printf "start_zenny: %s\n" "${SET_START_ZENNY}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_POINT}" ]; then printf "start_point: %s\n" "${SET_START_POINT}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_POINT_PRE}" ]; then printf "start_point_pre: %s\n" "${SET_START_POINT_PRE}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_POINT_DORAM}" ]; then printf "start_point_doram: %s\n" "${SET_START_POINT_DORAM}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_ITEMS}" ]; then printf "start_items: %s\n" "${SET_START_ITEMS}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_START_ITEMS_DORAM}" ]; then printf "start_items_doram: %s\n" "${SET_START_ITEMS_DORAM}" >> /opt/rAthena/conf/import/char_conf.txt; fi
-    if ! [ -z "${SET_PINCODE_ENABLED}" ]; then printf "pincode_enabled: %s\n" "${SET_PINCODE_ENABLED}" >> /opt/rAthena/conf/import/char_conf.txt; fi
+    if ! [ -z "${SET_SERVER_NAME}" ]; then sed -i "s/^server_name:.*/server_name: ${SET_SERVER_NAME}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_MAX_CONNECT_USER}" ]; then sed -i "s/^max_connect_user:.*/max_connect_user: ${SET_MAX_CONNECT_USER}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_ZENNY}" ]; then sed -i "s/^start_zenny:.*/start_zenny: ${SET_START_ZENNY}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_POINT}" ]; then sed -i "s/^start_point:.*/start_point: ${SET_START_POINT}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_POINT_PRE}" ]; then sed -i "s/^start_point_pre:.*/start_point_pre: ${SET_START_POINT_PRE}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_POINT_DORAM}" ]; then sed -i "s/^start_point_doram:.*/start_point_doram: ${SET_START_POINT_DORAM}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_ITEMS}" ]; then sed -i "s/^start_items:.*/start_items: ${SET_START_ITEMS}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_ITEMS_DORAM}" ]; then sed -i "s/^start_items_doram:.*/start_items_doram: ${SET_START_ITEMS_DORAM}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_PINCODE_ENABLED}" ]; then sed -i "s/^pincode_enabled:.*/pincode_enabled: ${SET_PINCODE_ENABLED}/" /opt/rAthena/conf/char_athena.conf; fi
 
-    if ! [ -z "${SET_ALLOWED_REGS}" ]; then printf "allowed_regs: %s\n" "${SET_ALLOWED_REGS}" >> /opt/rAthena/conf/import/login_conf.txt; fi
-    if ! [ -z "${SET_TIME_ALLOWED}" ]; then printf "time_allowed: %s\n" "${SET_TIME_ALLOWED}" >> /opt/rAthena/conf/import/login_conf.txt; fi
+    if ! [ -z "${SET_ALLOWED_REGS}" ]; then sed -i "s/^allowed_regs:.*/allowed_regs: ${SET_ALLOWED_REGS}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_TIME_ALLOWED}" ]; then sed -i "s/^time_allowed:.*/time_allowed: ${SET_TIME_ALLOWED}/" /opt/rAthena/conf/login_athena.conf; fi
 
-    if ! [ -z "${SET_ARROW_DECREMENT}" ]; then printf "arrow_decrement: %s\n" "${SET_ARROW_DECREMENT}" >> /opt/rAthena/conf/import/battle_conf.txt; fi
+    if ! [ -z "${SET_ARROW_DECREMENT}" ]; then sed -i "s/^arrow_decrement:.*/arrow_decrement: ${SET_ARROW_DECREMENT}/" /opt/rAthena/conf/battle_athena.conf; fi
 }
 
 enable_custom_npc () {
