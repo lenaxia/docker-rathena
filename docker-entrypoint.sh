@@ -53,6 +53,12 @@ setup_mysql_config () {
     sed -i "s/^char_server_id:.*/char_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^char_server_pw:.*/char_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
 
+    printf "Setting up MySQL on Web Server...\n"
+    sed -i "s/^web_server_ip:.*/web_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_db:.*/web_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_id:.*/web_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_pw:.*/web_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
+
     printf "Setting up MySQL on IP ban...\n"
     sed -i "s/^ipban_db_ip:.*/ipban_db_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^ipban_db_db:.*/ipban_db_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
