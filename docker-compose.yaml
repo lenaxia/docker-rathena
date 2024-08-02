@@ -8,12 +8,12 @@ services:
     restart: unless-stopped
     environment:
       - MYSQL_PWD=ragnarok
-      - SET_INTERSRV_PASSWD=test123
       - MYSQL_HOST=192.168.5.15
       - MYSQL_USER=ragnarok
       - MYSQL_DB=rathena_renewal
       - SET_SERVER_NAME=rAthena
-      - SET_INTERSRV_USERID=user1
+      - SET_INTERSRV_USERID=s1
+      - SET_INTERSRV_PASSWD=p1
       - MYSQL_DROP_DB=0
       - SET_PINCODE_ENABLED=no
       - SET_START_POINT=prontera,155,182

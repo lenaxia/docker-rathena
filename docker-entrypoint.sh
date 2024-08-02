@@ -35,7 +35,7 @@ setup_mysql_config () {
     if [ -z "${MYSQL_PWD}" ]; then printf "Missing MYSQL_PWD environment variable. Unable to continue.\n"; exit 1; fi
 
     printf "Setting up MySQL on Login Server...\n"
-    sed -i "s/^use_sql_db:.*/use_sql_db: yes/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^use_sql_db:.*/use_sql_db: no/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^login_server_ip:.*/login_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^login_server_db:.*/login_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^login_server_id:.*/login_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
@@ -71,9 +71,9 @@ setup_mysql_config () {
     sed -i "s/^log_db_id:.*/log_db_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^log_db_pw:.*/log_db_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
 
-    printf "DROP FOUND, REMOVING EXISTING DATABASE...\n"
     if ! [ -z ${MYSQL_DROP_DB} ]; then
         if [ ${MYSQL_DROP_DB} -ne 0 ]; then
+            printf "DROP FOUND, REMOVING EXISTING DATABASE...\n"
             mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -e "DROP DATABASE ${MYSQL_DB};"
         fi
     fi
@@ -98,10 +98,11 @@ setup_mysql_config () {
         mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db2_re.sql
         mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D${MYSQL_DB} < /opt/rAthena/sql-files/roulette_default_data.sql
         mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D${MYSQL_DB} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
-        if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then
-            printf "Populating accounts and characters"
-            mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D${MYSQL_DB} < /root/accountsandchars.sql
-        fi
+    fi
+
+    if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then
+        printf "Populating accounts and characters"
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D${MYSQL_DB} < /root/accountsandchars.sql
     fi
 }
 
