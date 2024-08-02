@@ -36,7 +36,7 @@ LABEL DOWNLOAD_OVERRIDE_CONF_URL="If defined, it will download a ZIP file with t
   SET_ALLOWED_REGS="How many new characters registration are we going to allow per time unit." \
   SET_TIME_ALLOWED="Amount of time in seconds for allowing characters registration"
 
-ENV PACKETVER=20151029 \
+ENV PACKETVER=20190605 \
   PACKET_OBFUSCATION=1
 
 # Update package lists and install dependencies
