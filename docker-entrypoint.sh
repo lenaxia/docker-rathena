@@ -117,6 +117,13 @@ setup_config () {
     if [ -z "${CLIENT_SUBNET}" ]; then CLIENT_SUBNET="192.168.0.0/16"; fi
     if [ -z "${USE_SQL_DB}" ]; then USE_SQL_DB="no"; fi
     if [ -z "${SET_SERVER_NAME}" ]; then SET_SERVER_NAME="rAthena"; fi
+    if [ -z "${SET_LOG_FILTER}" ]; then SET_LOG_FILTER="1"; fi
+    if [ -z "${SET_LOG_CHAT}" ]; then SET_LOG_CHAT="63"; fi
+
+    sed -i "s/^char_del_option:.*/char_del_option: 1/" /opt/rAthena/conf/char_athena.conf
+    sed -i "s/^char_del_delay:.*/char_del_delay: 30/" /opt/rAthena/conf/char_athena.conf
+    sed -i "s/^char_del_restriction:.*/char_del_restriction: 3/" /opt/rAthena/conf/char_athena.conf
+    sed -i "s/^clear_parties:.*/clear_parties: yes/" /opt/rAthena/conf/char_athena.conf
 
 
     if ! [ -z "${SET_INTERSRV_USERID}" ]; then
@@ -153,6 +160,9 @@ setup_config () {
     if ! [ -z "${SET_NEW_ACCOUNT}" ]; then sed -i "s/^new_account:.*/new_account: ${SET_NEW_ACCOUNT}/" /opt/rAthena/conf/login_athena.conf; fi
     if ! [ -z "${SET_ALLOWED_REGS}" ]; then sed -i "s/^allowed_regs:.*/allowed_regs: ${SET_ALLOWED_REGS}/" /opt/rAthena/conf/login_athena.conf; fi
     if ! [ -z "${SET_TIME_ALLOWED}" ]; then sed -i "s/^time_allowed:.*/time_allowed: ${SET_TIME_ALLOWED}/" /opt/rAthena/conf/login_athena.conf; fi
+
+    if ! [ -z "${SET_LOG_FILTER}" ]; then sed -i "s/^log_filter:.*/log_filter: ${SET_LOG_FILTER}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_LOG_CHAT}" ]; then sed -i "s/^log_chat:.*/log_chat: ${SET_LOG_CHAT}/" /opt/rAthena/conf/login_athena.conf; fi
 }
 
 enable_custom_npc () {
