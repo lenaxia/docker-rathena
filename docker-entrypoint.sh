@@ -136,7 +136,7 @@ setup_config () {
     fi
     if ! [ -z "${SET_SERVER_NAME}" ]; then sed -i "s/^server_name:.*/server_name: ${SET_SERVER_NAME}/" /opt/rAthena/conf/char_athena.conf; fi
     if ! [ -z "${USE_SQL_DB}" ]; then sed -i "s/^use_sql_db:.*/use_sql_db: ${USE_SQL_DB}/" /opt/rAthena/conf/inter_athena.conf; fi
-    if ! [ -z "${CLIENT_SUBNET}" ]; then sed -i "/^allow:.*/a allow: ${CLIENT_SUBNET}" /opt/rAthena/conf/import/packet_conf.txt; fi
+    if ! [ -z "${CLIENT_SUBNET}" ]; then echo "allow: ${CLIENT_SUBNET}" >> /opt/rAthena/conf/import/packet_conf.txt; fi
 
     if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then sed -i "s/^\(\/\/\)\?map_ip:.*/map_ip: ${SET_MAP_PUBLIC_IP}/" /opt/rAthena/conf/map_athena.conf; fi
     if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then sed -i "s/^\(\/\/\)\?login_ip:.*/login_ip: ${SET_CHAR_TO_LOGIN_IP}/" /opt/rAthena/conf/char_athena.conf; fi
