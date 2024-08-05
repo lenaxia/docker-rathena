@@ -63,14 +63,14 @@ RUN git clone https://github.com/rathena/rathena.git /opt/rAthena
 
 # Build the rAthena server
 WORKDIR /opt/rAthena
-RUN if [ ${PACKET_OBFUSCATION} -neq 1 ]; then \
-        sed -i '/#ifndef PACKET_OBFUSCATION/,/#endif/s/^/\/\//' /opt/rAthena/src/config/packets.hpp; \
-    fi 
 
-# Define if the server will be renewal or classic 
-RUN if [ ${SERVER_MODE} == "classic" ]; then \
+RUN if [ ${PACKET_OBFUSCATION} -ne 1 ]; then \
+        sed -i '/#ifndef PACKET_OBFUSCATION/,/#endif/s/^/\/\//' /opt/rAthena/src/config/packets.hpp; \
+    fi
+
+RUN if [ "${SERVER_MODE}" = "classic" ]; then \
         sed -i 's/\/\/#define PRERE/#define PRERE/' /opt/rAthena/src/config/renewal.hpp; \
-    fi 
+    fi
 
 RUN ./configure --enable-packetver=${PACKETVER} \
     && make clean \
