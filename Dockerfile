@@ -62,7 +62,7 @@ RUN git clone https://github.com/rathena/rathena.git /opt/rAthena
 # Build the rAthena server
 WORKDIR /opt/rAthena
 RUN if [ ${PACKET_OBFUSCATION} -neq 1 ]; then \
-        sed -i '/#ifndef PACKET_OBFUSCATION/,/#endif/s/^/\/\//' /opt/rAthena/src/config/packets.hpp \
+        sed -i '/#ifndef PACKET_OBFUSCATION/,/#endif/s/^/\/\//' /opt/rAthena/src/config/packets.hpp; \
     fi \
     && ./configure --enable-packetver=${PACKETVER} \
     && make clean \
