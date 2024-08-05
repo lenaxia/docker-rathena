@@ -48,7 +48,7 @@ jobs:
         platforms: linux/amd64
         push: true
         tags: |
-          ghcr.io/${{ github.repository }}/rathena-${{ matrix.SERVER_MODE }}-packetver${{ matrix.PACKET_VERSION }}:${{ steps.get-date.outputs.date }}
+          ghcr.io/${{ github.repository }}/rathena-packetver${{ matrix.PACKET_VERSION }}:${{ matrix.SERVER_MODE }}-${{ steps.get-date.outputs.date }}
         build-args: |
           SERVER_MODE=${{ matrix.SERVER_MODE }}
           PACKET_VERSION=${{ matrix.PACKET_VERSION }}
