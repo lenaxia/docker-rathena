@@ -114,6 +114,9 @@ setup_mysql_config () {
 
 setup_config () {
     if [ -z "${SET_PINCODE_ENABLED}" ]; then SET_PINCODE_ENABLED="no"; fi 
+    if [ -z "${CLIENT_SUBNET}" ]; then CLIENT_SUBNET="192.168.0.0/16"; fi
+    if [ -z "${USE_SQL_DB}" ]; then USE_SQL_DB="no"; fi
+    if [ -z "${SET_SERVER_NAME}" ]; then SET_SERVER_NAME="rAthena"; fi
 
 
     if ! [ -z "${SET_INTERSRV_USERID}" ]; then
@@ -128,10 +131,10 @@ setup_config () {
     if ! [ -z "${USE_SQL_DB}" ]; then sed -i "s/^use_sql_db:.*/use_sql_db: ${USE_SQL_DB}/" /opt/rAthena/conf/inter_athena.conf; fi
     if ! [ -z "${CLIENT_SUBNET}" ]; then sed -i "/^allow:.*/a allow: ${CLIENT_SUBNET}" /opt/rAthena/conf/import/packet_conf.txt; fi
 
-    if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then sed -i "s/^map_ip:.*/map_ip: ${SET_MAP_PUBLIC_IP}/" /opt/rAthena/conf/map_athena.conf; fi
-    if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then sed -i "s/^login_ip:.*/login_ip: ${SET_CHAR_TO_LOGIN_IP}/" /opt/rAthena/conf/char_athena.conf; fi
-    if ! [ -z "${SET_CHAR_PUBLIC_IP}" ]; then sed -i "s/^char_ip:.*/char_ip: ${SET_CHAR_PUBLIC_IP}/" /opt/rAthena/conf/char_athena.conf; fi
-    if ! [ -z "${SET_MAP_TO_CHAR_IP}" ]; then sed -i "s/^char_ip:.*/char_ip: ${SET_MAP_TO_CHAR_IP}/" /opt/rAthena/conf/map_athena.conf; fi
+    if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then sed -i "s/^\(\/\/\)\?map_ip:.*/map_ip: ${SET_MAP_PUBLIC_IP}/" /opt/rAthena/conf/map_athena.conf; fi
+    if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then sed -i "s/^\(\/\/\)\?login_ip:.*/login_ip: ${SET_CHAR_TO_LOGIN_IP}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_CHAR_PUBLIC_IP}" ]; then sed -i "s/^\(\/\/\)\?char_ip:.*/char_ip: ${SET_CHAR_PUBLIC_IP}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_MAP_TO_CHAR_IP}" ]; then sed -i "s/^\(\/\/\)\?char_ip:.*/char_ip: ${SET_MAP_TO_CHAR_IP}/" /opt/rAthena/conf/map_athena.conf; fi
     if ! [ -z "${ADD_SUBNET_MAP1}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP1}/" /opt/rAthena/conf/subnet_athena.conf; fi
     if ! [ -z "${ADD_SUBNET_MAP2}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP2}/" /opt/rAthena/conf/subnet_athena.conf; fi
     if ! [ -z "${ADD_SUBNET_MAP3}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP3}/" /opt/rAthena/conf/subnet_athena.conf; fi
