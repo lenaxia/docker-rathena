@@ -25,7 +25,6 @@ LABEL DOWNLOAD_OVERRIDE_CONF_URL="If defined, it will download a ZIP file with t
   SET_INTERSRV_USERID="UserID for interserver communication." \
   SET_INTERSRV_PASSWD="Password for interserver communication." \
   SET_SERVER_NAME="DisplayName of the rAthena server" \
-
   SET_MAX_CONNECT_USER="Maximun number of users allowed to connect concurrently. Default is unlimited." \
   SET_START_ZENNY="Amount of zenny to start with. Default is 0." \
   SET_START_POINT="Point where newly created characters will start AFTER trainning. Format: <map_name>,<x>,<y>{:<map_name>,<x>,<y>...}" \

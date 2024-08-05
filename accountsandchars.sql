@@ -894,7 +894,7 @@ END //
 -- ###### ACCOUNTS ######
 CALL cleanDatabase();
 CALL createGmAccountsAndChars();
-CALL createBotAccounts(5000);
+CALL createBotAccounts(1000);
 CALL createBotChars();
 CALL createItemsForChars();
 CALL createSkillsForChars();
