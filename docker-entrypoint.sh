@@ -12,8 +12,8 @@ DATE=$(date '+%Y-%m-%d %H:%M:%S')
 echo "Initalizing Docker container..."
 
 check_database_exist () {
-    RESULT=`mysqlshow --user=${MYSQL_USER} --password=${MYSQL_PWD} --host=${MYSQL_HOST} --port=${MYSQL_PORT} ${MYSQL_DB} | grep -v Wildcard | grep -o ${MYSQL_DB}`
-    if [ "$RESULT" = "${MYSQL_DB}" ]; then
+    RESULT=`mysqlshow --user=${MYSQL_USERNAME} --password=${MYSQL_PASSWORD} --host=${MYSQL_HOST} --port=${MYSQL_PORT} ${MYSQL_DATABASE} | grep -v Wildcard | grep -o ${MYSQL_DATABASE}`
+    if [ "$RESULT" = "${MYSQL_DATABASE}" ]; then
         return 0;
     else
         return 1;
@@ -30,85 +30,85 @@ setup_init () {
 setup_mysql_config () {
     printf "###### MySQL setup ######\n"
     if [ -z "${MYSQL_HOST}" ]; then printf "Missing MYSQL_HOST environment variable. Unable to continue.\n"; exit 1; fi
-    if [ -z "${MYSQL_DB}" ]; then printf "Missing MYSQL_DB environment variable. Unable to continue.\n"; exit 1; fi
-    if [ -z "${MYSQL_USER}" ]; then printf "Missing MYSQL_USER environment variable. Unable to continue.\n"; exit 1; fi
-    if [ -z "${MYSQL_PWD}" ]; then printf "Missing MYSQL_PWD environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_DATABASE}" ]; then printf "Missing MYSQL_DATABASE environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_USERNAME}" ]; then printf "Missing MYSQL_USERNAME environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_PASSWORD}" ]; then printf "Missing MYSQL_PASSWORD environment variable. Unable to continue.\n"; exit 1; fi
 
     printf "Setting up MySQL on Login Server...\n"
     sed -i "s/^use_sql_db:.*/use_sql_db: no/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^login_server_ip:.*/login_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^login_server_port:.*/login_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^login_server_id:.*/login_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^login_server_pw:.*/login_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^login_server_db:.*/login_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_id:.*/login_server_id: ${MYSQL_USERNAME}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_pw:.*/login_server_pw: ${MYSQL_PASSWORD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_db:.*/login_server_db: ${MYSQL_DATABASE}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on Map Server...\n"
     sed -i "s/^map_server_ip:.*/map_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^map_server_port:.*/map_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^map_server_id:.*/map_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^map_server_pw:.*/map_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^map_server_db:.*/map_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_id:.*/map_server_id: ${MYSQL_USERNAME}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_pw:.*/map_server_pw: ${MYSQL_PASSWORD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_db:.*/map_server_db: ${MYSQL_DATABASE}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on Char Server...\n"
     sed -i "s/^char_server_ip:.*/char_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^char_server_port:.*/char_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^char_server_id:.*/char_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^char_server_pw:.*/char_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^char_server_db:.*/char_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_id:.*/char_server_id: ${MYSQL_USERNAME}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_pw:.*/char_server_pw: ${MYSQL_PASSWORD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_db:.*/char_server_db: ${MYSQL_DATABASE}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on Web Server...\n"
     sed -i "s/^web_server_ip:.*/web_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^web_server_port:.*/web_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^web_server_id:.*/web_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^web_server_pw:.*/web_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^web_server_db:.*/web_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_id:.*/web_server_id: ${MYSQL_USERNAME}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_pw:.*/web_server_pw: ${MYSQL_PASSWORD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_db:.*/web_server_db: ${MYSQL_DATABASE}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on IP ban...\n"
     sed -i "s/^ipban_db_ip:.*/ipban_db_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^ipban_db_port:.*/ipban_db_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^ipban_db_id:.*/ipban_db_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^ipban_db_pw:.*/ipban_db_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^ipban_db_db:.*/ipban_db_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_id:.*/ipban_db_id: ${MYSQL_USERNAME}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_pw:.*/ipban_db_pw: ${MYSQL_PASSWORD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_db:.*/ipban_db_db: ${MYSQL_DATABASE}/" /opt/rAthena/conf/inter_athena.conf
 
     printf "Setting up MySQL on log...\n"
     sed -i "s/^log_db_ip:.*/log_db_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^log_db_port:.*/log_db_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^log_db_id:.*/log_db_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^log_db_pw:.*/log_db_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
-    sed -i "s/^log_db_db:.*/log_db_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_id:.*/log_db_id: ${MYSQL_USERNAME}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_pw:.*/log_db_pw: ${MYSQL_PASSWORD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_db:.*/log_db_db: ${MYSQL_DATABASE}/" /opt/rAthena/conf/inter_athena.conf
 
     if ! [ -z ${MYSQL_DROP_DB} ]; then
         if [ ${MYSQL_DROP_DB} -ne 0 ]; then
             printf "DROP FOUND, REMOVING EXISTING DATABASE...\n"
-            mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "DROP DATABASE ${MYSQL_DB};"
+            mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "DROP DATABASE ${MYSQL_DATABASE};"
         fi
     fi
     printf "Checking if database already exists...\n"
     if ! check_database_exist; then
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "CREATE DATABASE ${MYSQL_DB};"
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/main.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/logs.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db2.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db_re.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db2_re.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_cash_db.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_cash_db2.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db2.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db_re.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db2_re.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db2.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db_re.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db2_re.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/roulette_default_data.sql
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "CREATE DATABASE ${MYSQL_DATABASE};"
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/main.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/logs.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db2.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db_re.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db2_re.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_cash_db.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_cash_db2.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db2.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db_re.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db2_re.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db2.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db_re.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db2_re.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/roulette_default_data.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
     fi
 
     if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then
         printf "Populating accounts and characters"
-        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /root/accountsandchars.sql
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /root/accountsandchars.sql
     fi
 }
 

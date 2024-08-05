@@ -13,9 +13,9 @@ LABEL title="rAthena - Dockerized server" \
 
 LABEL DOWNLOAD_OVERRIDE_CONF_URL="If defined, it will download a ZIP file with the import configuration overrides. If this is the case, no environment variables applies." \
   MYSQL_HOST="Hostname of the MySQL database. Ex: calnus-beta.mysql.database.azure.com." \
-  MYSQL_DB="Name of the MySQL database." \
-  MYSQL_USER="Database username for authentication." \
-  MYSQL_PWD="Password for authenticating with database. WARNING: it will be visible from Azure Portal." \
+  MYSQL_DATABASE="Name of the MySQL database." \
+  MYSQL_USERNAME="Database username for authentication." \
+  MYSQL_PASSWORD="Password for authenticating with database. WARNING: it will be visible from Azure Portal." \
   MYSQL_ACCOUNTSANDCHARS="To whatever to execute the accountsandchars.sql so GM and bot accounts get precreated in the database" \
   SET_CHAR_TO_LOGIN_IP="IP that CHAR server uses to connect to LOGIN." \
   SET_MAP_TO_CHAR_IP="IP that MAP server uses to connect to CHAR." \

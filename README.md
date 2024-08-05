@@ -36,9 +36,9 @@ Alpine Linux and rAthena footprints are fairly small and you can run your server
 
   * `DOWNLOAD_OVERRIDE_CONF_URL`. If defined, it will download a ZIP file with the import configuration overrides. If this is the case, no environment variables applies.
   * `MYSQL_HOST`. Hostname of the MySQL database. Ex: calnus-beta.mysql.database.azure.com
-  * `MYSQL_DB`. Name of the MySQL database.
-  * `MYSQL_USER`. Database username for authentication.
-  * `MYSQL_PWD`. Password for authenticating with database.
+  * `MYSQL_DATABASE`. Name of the MySQL database.
+  * `MYSQL_USERNAME`. Database username for authentication.
+  * `MYSQL_PASSWORD`. Password for authenticating with database.
   * `MYSQL_ACCOUNTSANDCHARS`. To whatever to execute the accountsandchars.sql so GM and bot accounts get precreated in the database.
   * `SET_CHAR_TO_LOGIN_IP`. IP that CHAR server uses to connect to LOGIN.
   * `SET_MAP_TO_CHAR_IP`. IP that MAP server uses to connect to CHAR.
@@ -71,7 +71,7 @@ rAthena is very sensitive to NAT configurations on your network and it is mandat
 If you have a readily accesible MySQL sever, then usage is straight forward:
 
 ```
-docker run -d -p 6900:6900 -p 6121:6121 -p 5121:5121 --restart=unless-stopped --name rathena -e MYSQL_HOST="MYSQL host IP" -e MYSQL_USER="MySQL username" -e MYSQL_PWD="MySQL password" -e MYSQL_DB="rAthena" -e ADD_SUBNET_MAP1="255.255.0.0:10.0.0.3:10.0.0.3" -e SET_CHAR_PUBLIC_IP="52.232.25.13" -e SET_MAP_PUBLIC_IP="52.232.25.13" -e MYSQL_ACCOUNTSANDCHARS="1" -e SET_SERVER_NAME="My dockerized rAthena server" cmilanf/docker-rathena:latest
+docker run -d -p 6900:6900 -p 6121:6121 -p 5121:5121 --restart=unless-stopped --name rathena -e MYSQL_HOST="MYSQL host IP" -e MYSQL_USERNAME="MySQL username" -e MYSQL_PASSWORD="MySQL password" -e MYSQL_DATABASE="rAthena" -e ADD_SUBNET_MAP1="255.255.0.0:10.0.0.3:10.0.0.3" -e SET_CHAR_PUBLIC_IP="52.232.25.13" -e SET_MAP_PUBLIC_IP="52.232.25.13" -e MYSQL_ACCOUNTSANDCHARS="1" -e SET_SERVER_NAME="My dockerized rAthena server" cmilanf/docker-rathena:latest
 ```
 
 ## Related projects:

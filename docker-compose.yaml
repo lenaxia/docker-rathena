@@ -7,10 +7,10 @@ services:
       - 5121:5121
     restart: unless-stopped
     environment:
-      - MYSQL_PWD=ragnarok
+      - MYSQL_PASSWORD=ragnarok
       - MYSQL_HOST=192.168.5.15
-      - MYSQL_USER=ragnarok
-      - MYSQL_DB=rathena_renewal
+      - MYSQL_USERNAME=ragnarok
+      - MYSQL_DATABASE=rathena_renewal
       - SET_SERVER_NAME=rAthena
       - SET_INTERSRV_USERID=s1
       - SET_INTERSRV_PASSWD=p1
