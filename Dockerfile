@@ -36,8 +36,8 @@ LABEL DOWNLOAD_OVERRIDE_CONF_URL="If defined, it will download a ZIP file with t
   SET_ALLOWED_REGS="How many new characters registration are we going to allow per time unit." \
   SET_TIME_ALLOWED="Amount of time in seconds for allowing characters registration"
 
-ENV PACKETVER=20190605 \
-  PACKET_OBFUSCATION=1
+ENV PACKETVER=20200401 \
+  PACKET_OBFUSCATION=0
 
 # Update package lists and install dependencies
 RUN apt-get update && \
@@ -62,8 +62,7 @@ RUN git clone https://github.com/rathena/rathena.git /opt/rAthena
 # Build the rAthena server
 WORKDIR /opt/rAthena
 RUN if [ ${PACKET_OBFUSCATION} -neq 1 ]; then \
-        sed -i "s|#define PACKET_OBFUSCATION|//#define PACKET_OBFUSCATION|g" /opt/rAthena/src/config/packets.hpp; \
-        sed -i "s|#define PACKET_OBFUSCATION_WARN|//#define PACKET_OBFUSCATION_WARN|g" /opt/rAthena/src/config/packets.hpp; \
+        sed -i '/#ifndef PACKET_OBFUSCATION/,/#endif/s/^/\/\//' /opt/rAthena/src/config/packets.hpp \
     fi \
     && ./configure --enable-packetver=${PACKETVER} \
     && make clean \

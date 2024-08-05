@@ -1,25 +1,4 @@
 #!/bin/sh
-#
-# This entrypoint script creates a OpenKore instance prepared to use a random, unused account and character.
-# If the enviroment variable OK_USERNAMEMAXSUFFIX is set, the script will connect to the rAthena database
-# and retrieve query accounts matching OK_USERNAME plus 0...n number sequence. If the character happen to
-# be already online, then skips to the next username.
-#
-# Variable description:
-# ====================
-# OK_IP="IP address of the Ragnarok Online server"
-# OK_USERNAME="Account username"
-# OK_PWD="Account password"
-# OK_CHAR="Character slot. Default: 1"
-# OK_USERNAMEMAXSUFFIX="Maximum number of suffixes to generate with the username."
-# OK_KILLSTEAL="It is ok that the bot attacks monster that are already being attacked by other players."
-# OK_FOLLOW_USERNAME1="Name of the username to follow with 20% probability"
-# OK_FOLLOW_USERNAME2="Name of a second username to follow with 20% probability"
-# MYSQL_HOST="Hostname of the MySQL database. Ex: calnus-beta.mysql.database.azure.com."
-# MYSQL_DB="Name of the MySQL database."
-# MYSQL_USER="Database username for authentication."
-# MYSQL_PWD="Password for authenticating with database. WARNING: it will be visible from Azure Portal."
-
 echo "rAthena Development Team presents"
 echo "           ___   __  __"
 echo "     _____/   | / /_/ /_  ___  ____  ____ _"
@@ -32,106 +11,165 @@ echo ""
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 echo "Initalizing Docker container..."
 
-if [ -z "${OK_IP}" ]; then echo "Missing OK_IP environment variable. Unable to continue."; exit 1; fi
-if [ -z "${OK_USERNAME}" ]; then echo "Missing OK_USERNAME environment variable. Unable to continue."; exit 1; fi
-if [ -z "${OK_PWD}" ]; then echo "Missing OK_PWD environment variable. Unable to continue."; exit 1; fi
-if [ -z "${OK_CHAR}" ]; then OK_CHAR=1; fi
+check_database_exist () {
+    RESULT=`mysqlshow --user=${MYSQL_USER} --password=${MYSQL_PWD} --host=${MYSQL_HOST} --port=${MYSQL_PORT} ${MYSQL_DB} | grep -v Wildcard | grep -o ${MYSQL_DB}`
+    if [ "$RESULT" = "${MYSQL_DB}" ]; then
+        return 0;
+    else
+        return 1;
+    fi
+}
 
-if [ "${OK_KILLSTEAL}" = "1" ]; then
-    sed -i "1507s|return 0|return 1|" /opt/openkore/src/Misc.pm
-    sed -i "1534s|return 0|return 1|" /opt/openkore/src/Misc.pm
-    sed -i "1571s|return !objectIsMovingTowardsPlayer(\$monster);|return 1;|" /opt/openkore/src/Misc.pm
-    sed -i "1583s|return 0|return 1|" /opt/openkore/src/Misc.pm
-fi
+setup_init () {
+    if ! [ -z "${SET_MOTD}" ]; then printf "%s\n" "${SET_MOTD}" > /opt/rAthena/conf/motd.txt; fi
+    setup_mysql_config
+    setup_config
+    enable_custom_npc
+}
 
-if [ -z "${OK_USERNAMEMAXSUFFIX}" ]; then
-    sed -i "s|^username$|username ${OK_USERNAME}|g" /opt/openkore/control/config.txt
-else
-    if [ -z "${MYSQL_HOST}" ]; then echo "Missing MYSQL_HOST environment variable. Unable to continue."; exit 1; fi
-    if [ -z "${MYSQL_DB}" ]; then echo "Missing MYSQL_DB environment variable. Unable to continue."; exit 1; fi
-    if [ -z "${MYSQL_USER}" ]; then echo "Missing MYSQL_USER environment variable. Unable to continue."; exit 1; fi
-    if [ -z "${MYSQL_PWD}" ]; then echo "Missing MYSQL_PWD environment variable. Unable to continue."; exit 1; fi
-    for i in `seq 0 ${OK_USERNAMEMAXSUFFIX}`;
-    do
-        USERNAME=${OK_USERNAME}${i}
-        MYSQL_QUERY="SELECT \`online\` FROM \`char\` WHERE name='${USERNAME}';"
-        CHAR_IS_ONLINE=$(mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D ${MYSQL_DB} -ss -e "${MYSQL_QUERY}");
-        if [ "${CHAR_IS_ONLINE}" = "0" ]; then
-            MYSQL_QUERY="UPDATE \`char\` SET \`online\`=1 WHERE name='${USERNAME}'"
-            mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D ${MYSQL_DB} -ss -e "${MYSQL_QUERY}"
-            CLASS=$(mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -D ${MYSQL_DB} -ss -e "SELECT class FROM \`char\` WHERE name='${USERNAME}';")
-            case ${CLASS} in
-                4) # ACOLYTE
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/acolyte.txt /opt/openkore/control/config.txt
-                    ;;
-                8) # PRIEST
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/priest.txt /opt/openkore/control/config.txt
-                    ;;
-                15) # MONK
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/monk.txt /opt/openkore/control/config.txt
-                    ;;
-                2) # MAGE
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/mage.txt /opt/openkore/control/config.txt
-                    ;;
-                9) # WIZARD
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/wizard.txt /opt/openkore/control/config.txt
-                    ;;
-                16) # SAGE
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/sage.txt /opt/openkore/control/config.txt
-                    ;;
-                1) # SWORDMAN
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/swordman.txt /opt/openkore/control/config.txt
-                    ;;
-                7) # KNIGHT
-                    mv /opt/openkore/control/config.txt /opt/openkore/control/config.txt.bak
-                    cp /opt/openkore/control/class/knight.txt /opt/openkore/control/config.txt
-                    ;;
-            esac
-            sed -i "s|^username.*|username ${USERNAME}|g" /opt/openkore/control/config.txt
-            # 1,2 -> Follow OK_FOLLOW_USERNAME1, 3,4 -> Follow OK_FOLLOW_USERNAME2, 5-10 -> Do not follow
-            case $(shuf -i1-10 -n1) in
-                1|2)
-                    if ! [ -z "${OK_FOLLOW_USERNAME1}" ]; then
-                        sed -i "s|^followTarget$|followTarget ${OK_FOLLOW_USERNAME1}|g" /opt/openkore/control/config.txt
-                        #sed -i "s|^attackAuto 2$|attackAuto 1|g" /opt/openkore/control/config.txt
-                    fi
-                    ;;
-                3|4)
-                    if ! [ -z "${OK_FOLLOW_USERNAME2}" ]; then
-                        sed -i "s|^followTarget$|followTarget ${OK_FOLLOW_USERNAME2}|g" /opt/openkore/control/config.txt
-                        #sed -i "s|^attackAuto 2$|attackAuto 1|g" /opt/openkore/control/config.txt
-                    fi
-                    ;;
-            esac
-            break
+setup_mysql_config () {
+    printf "###### MySQL setup ######\n"
+    if [ -z "${MYSQL_HOST}" ]; then printf "Missing MYSQL_HOST environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_DB}" ]; then printf "Missing MYSQL_DB environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_USER}" ]; then printf "Missing MYSQL_USER environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_PWD}" ]; then printf "Missing MYSQL_PWD environment variable. Unable to continue.\n"; exit 1; fi
+
+    printf "Setting up MySQL on Login Server...\n"
+    sed -i "s/^use_sql_db:.*/use_sql_db: no/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_ip:.*/login_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_port:.*/login_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_id:.*/login_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_pw:.*/login_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^login_server_db:.*/login_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+
+    printf "Setting up MySQL on Map Server...\n"
+    sed -i "s/^map_server_ip:.*/map_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_port:.*/map_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_id:.*/map_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_pw:.*/map_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^map_server_db:.*/map_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+
+    printf "Setting up MySQL on Char Server...\n"
+    sed -i "s/^char_server_ip:.*/char_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_port:.*/char_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_id:.*/char_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_pw:.*/char_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^char_server_db:.*/char_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+
+    printf "Setting up MySQL on Web Server...\n"
+    sed -i "s/^web_server_ip:.*/web_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_port:.*/web_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_id:.*/web_server_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_pw:.*/web_server_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^web_server_db:.*/web_server_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+
+    printf "Setting up MySQL on IP ban...\n"
+    sed -i "s/^ipban_db_ip:.*/ipban_db_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_port:.*/ipban_db_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_id:.*/ipban_db_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_pw:.*/ipban_db_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^ipban_db_db:.*/ipban_db_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+
+    printf "Setting up MySQL on log...\n"
+    sed -i "s/^log_db_ip:.*/log_db_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_port:.*/log_db_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_id:.*/log_db_id: ${MYSQL_USER}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_pw:.*/log_db_pw: ${MYSQL_PWD}/" /opt/rAthena/conf/inter_athena.conf
+    sed -i "s/^log_db_db:.*/log_db_db: ${MYSQL_DB}/" /opt/rAthena/conf/inter_athena.conf
+
+    if ! [ -z ${MYSQL_DROP_DB} ]; then
+        if [ ${MYSQL_DROP_DB} -ne 0 ]; then
+            printf "DROP FOUND, REMOVING EXISTING DATABASE...\n"
+            mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "DROP DATABASE ${MYSQL_DB};"
         fi
-    done
+    fi
+    printf "Checking if database already exists...\n"
+    if ! check_database_exist; then
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "CREATE DATABASE ${MYSQL_DB};"
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/main.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/logs.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db2.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db_re.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_db2_re.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_cash_db.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/item_cash_db2.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db2.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db_re.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_db2_re.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db2.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db_re.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/mob_skill_db2_re.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /opt/rAthena/sql-files/roulette_default_data.sql
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
+    fi
+
+    if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then
+        printf "Populating accounts and characters"
+        mysql -u${MYSQL_USER} -p${MYSQL_PWD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DB} < /root/accountsandchars.sql
+    fi
+}
+
+setup_config () {
+    if ! [ -z "${SET_INTERSRV_USERID}" ]; then
+        sed -i "s/^userid:.*/userid: ${SET_INTERSRV_USERID}/" /opt/rAthena/conf/map_athena.conf
+        sed -i "s/^userid:.*/userid: ${SET_INTERSRV_USERID}/" /opt/rAthena/conf/char_athena.conf
+    fi
+    if ! [ -z "${SET_INTERSRV_PASSWD}" ]; then
+        sed -i "s/^passwd:.*/passwd: ${SET_INTERSRV_PASSWD}/" /opt/rAthena/conf/map_athena.conf
+        sed -i "s/^passwd:.*/passwd: ${SET_INTERSRV_PASSWD}/" /opt/rAthena/conf/char_athena.conf
+    fi
+    if ! [ -z "${SET_SERVER_NAME}" ]; then sed -i "s/^server_name:.*/server_name: ${SET_SERVER_NAME}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${USE_SQL_DB}" ]; then sed -i "s/^use_sql_db:.*/use_sql_db: ${USE_SQL_DB}/" /opt/rAthena/conf/inter_athena.conf; fi
+    if ! [ -z "${CLIENT_SUBNET}" ]; then sed -i "/^allow:.*/a allow: ${CLIENT_SUBNET}" /opt/rAthena/conf/import/packet_conf.txt; fi
+
+    if ! [ -z "${SET_MAP_PUBLIC_IP}" ]; then sed -i "s/^map_ip:.*/map_ip: ${SET_MAP_PUBLIC_IP}/" /opt/rAthena/conf/map_athena.conf; fi
+    if ! [ -z "${SET_CHAR_TO_LOGIN_IP}" ]; then sed -i "s/^login_ip:.*/login_ip: ${SET_CHAR_TO_LOGIN_IP}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_CHAR_PUBLIC_IP}" ]; then sed -i "s/^char_ip:.*/char_ip: ${SET_CHAR_PUBLIC_IP}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_MAP_TO_CHAR_IP}" ]; then sed -i "s/^char_ip:.*/char_ip: ${SET_MAP_TO_CHAR_IP}/" /opt/rAthena/conf/map_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP1}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP1}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP2}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP2}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP3}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP3}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP4}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP4}/" /opt/rAthena/conf/subnet_athena.conf; fi
+    if ! [ -z "${ADD_SUBNET_MAP5}" ]; then sed -i "s/^subnet:.*/subnet: ${ADD_SUBNET_MAP5}/" /opt/rAthena/conf/subnet_athena.conf; fi
+
+    if ! [ -z "${SET_MAX_CONNECT_USER}" ]; then sed -i "s/^max_connect_user:.*/max_connect_user: ${SET_MAX_CONNECT_USER}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_ZENNY}" ]; then sed -i "s/^start_zenny:.*/start_zenny: ${SET_START_ZENNY}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_POINT}" ]; then sed -i "s/^start_point:.*/start_point: ${SET_START_POINT}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_POINT_PRE}" ]; then sed -i "s/^start_point_pre:.*/start_point_pre: ${SET_START_POINT_PRE}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_POINT_DORAM}" ]; then sed -i "s/^start_point_doram:.*/start_point_doram: ${SET_START_POINT_DORAM}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_ITEMS}" ]; then sed -i "s/^start_items:.*/start_items: ${SET_START_ITEMS}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_START_ITEMS_DORAM}" ]; then sed -i "s/^start_items_doram:.*/start_items_doram: ${SET_START_ITEMS_DORAM}/" /opt/rAthena/conf/char_athena.conf; fi
+    if ! [ -z "${SET_PINCODE_ENABLED}" ]; then sed -i "s/^pincode_enabled:.*/pincode_enabled: ${SET_PINCODE_ENABLED}/" /opt/rAthena/conf/char_athena.conf; fi
+
+    if ! [ -z "${SET_ALLOWED_REGS}" ]; then sed -i "s/^allowed_regs:.*/allowed_regs: ${SET_ALLOWED_REGS}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_TIME_ALLOWED}" ]; then sed -i "s/^time_allowed:.*/time_allowed: ${SET_TIME_ALLOWED}/" /opt/rAthena/conf/login_athena.conf; fi
+}
+
+enable_custom_npc () {
+    printf "npc: npc/custom/gab_npc.txt\n" >> /opt/rAthena/npc/scripts_custom.conf
+}
+
+#PUBLICIP=$(dig +short myip.opendns.com @resolver1.opendns.com)
+
+cd /opt/rAthena
+if ! [ -z ${DOWNLOAD_OVERRIDE_CONF_URL} ]; then 
+    wget -q ${DOWNLOAD_OVERRIDE_CONF_URL} -O /tmp/rathena_import_conf.zip
+    if [ $? -eq 0 ]; then
+        unzip /tmp/rathena_import_conf.zip -d /opt/rAthena/conf/import/
+        if ! [ $? -eq 0 ]; then
+            setup_init
+        fi
+    else
+        setup_init
+    fi
+else
+    setup_init
 fi
-sed -i "s|^master$|master ${OK_SERVER}|g" /opt/openkore/control/config.txt
-sed -i "s|^server.*|server 0|g" /opt/openkore/control/config.txt
-sed -i "s|^password.*|password ${OK_PWD}|g" /opt/openkore/control/config.txt
-sed -i "s|^char$|char ${OK_CHAR}|g" /opt/openkore/control/config.txt
-sed -i "s|^autoResponse 0$|autoResponse 1|g" /opt/openkore/control/config.txt
-sed -i "s|^autoResponseOnHeal 0$|autoResponseOnHeal 1|g" /opt/openkore/control/config.txt
-sed -i "s|^route_randomWalk_inTown 0$|route_randomWalk_inTown 1|g" /opt/openkore/control/config.txt
-sed -i "s|^partyAuto 1$|partyAuto 2|g" /opt/openkore/control/config.txt
-sed -i "s|^follow 0$|follow 1|g" /opt/openkore/control/config.txt
-sed -i "s|^followSitAuto 0$|followSitAuto 1|g" /opt/openkore/control/config.txt
-sed -i "s|^attackAuto_inLockOnly 1$|attackAuto_inLockOnly 0|g" /opt/openkore/control/config.txt
 
-sed -i "s|^lockMap$|lockMap gef_fild07|g" /opt/openkore/control/config.txt
-sed -i "s|^lockMap_x$|lockMap_x 218|g" /opt/openkore/control/config.txt
-sed -i "s|^lockMap_y$|lockMap_y 185|g" /opt/openkore/control/config.txt
-sed -i "s|^lockMap_randX$|lockMap_randX 115|g" /opt/openkore/control/config.txt
-sed -i "s|^lockMap_randY$|lockMap_randY 20|g" /opt/openkore/control/config.txt
-
-sed -i "s|^ip [0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$|ip ${OK_IP}|g" /opt/openkore/tables/servers.txt
+sed -i '39,54s/^/\/\//' /opt/rAthena/npc/re/warps/cities/izlude.txt
+sed -i '94,113s/^/\/\//' /opt/rAthena/npc/re/warps/fields/prontera_fild.txt
 
 exec "$@"
