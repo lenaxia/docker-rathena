@@ -16,7 +16,7 @@ jobs:
 
     strategy:
       matrix:
-        SERVER_MODE: ["classic", "renewal"]
+        SERVER_MODE: ["renewal"]
         PACKET_VERSION: ["20180418", "20190605", "20200401", "latest"]
 
     steps:
