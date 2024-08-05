@@ -113,6 +113,9 @@ setup_mysql_config () {
 }
 
 setup_config () {
+    if [ -z "${SET_PINCODE_ENABLED}" ]; then SET_PINCODE_ENABLED="no"; fi 
+
+
     if ! [ -z "${SET_INTERSRV_USERID}" ]; then
         sed -i "s/^userid:.*/userid: ${SET_INTERSRV_USERID}/" /opt/rAthena/conf/map_athena.conf
         sed -i "s/^userid:.*/userid: ${SET_INTERSRV_USERID}/" /opt/rAthena/conf/char_athena.conf
