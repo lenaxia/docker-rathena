@@ -1,54 +1,249 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Images
 
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
+  schedule:
+    # Weekly build to update with latest rAthena commits
+    - cron: '0 0 * * 0'
   workflow_dispatch:
+    inputs:
+      rathena_commit:
+        description: 'rAthena commit SHA, branch, or tag (e.g., master, 2024-12-01, abc123)'
+        required: true
+        default: 'master'
+        type: string
+      server_mode:
+        description: 'Server mode'
+        required: true
+        default: 'classic'
+        type: choice
+        options:
+          - classic
+          - renewal
+      packet_version:
+        description: 'Packet version'
+        required: true
+        default: '20200401'
+        type: choice
+        options:
+          - '20180418'
+          - '20190605'
+          - '20200401'
+      platforms:
+        description: 'Platforms to build for'
+        required: true
+        default: 'linux/amd64,linux/arm64'
+        type: string
 
 jobs:
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate build matrix
+        id: set-matrix
+        run: |
+          # Default matrix for manual triggers
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            MATRIX=$(cat <<EOF
+            {
+              "include": [{
+                "rathena_commit": "${{ github.event.inputs.rathena_commit }}",
+                "packet_version": "${{ github.event.inputs.packet_version }}",
+                "server_mode": "${{ github.event.inputs.server_mode }}",
+                "renewal": "${{ github.event.inputs.server_mode == 'renewal' && 'true' || 'false' }}",
+                "platforms": "${{ github.event.inputs.platforms }}"
+              }]
+            }
+            EOF
+            )
+          else
+            # For scheduled/auto builds, use predefined matrix
+            # This can be expanded to fetch recent commits dynamically
+            MATRIX=$(cat <<EOF
+            {
+              "include": [
+                {
+                  "rathena_commit": "master",
+                  "packet_version": "20200401",
+                  "server_mode": "classic",
+                  "renewal": "false",
+                  "platforms": "linux/amd64,linux/arm64"
+                },
+                {
+                  "rathena_commit": "master",
+                  "packet_version": "20200401",
+                  "server_mode": "renewal",
+                  "renewal": "true",
+                  "platforms": "linux/amd64,linux/arm64"
+                },
+                {
+                  "rathena_commit": "master",
+                  "packet_version": "20190605",
+                  "server_mode": "classic",
+                  "renewal": "false",
+                  "platforms": "linux/amd64"
+                },
+                {
+                  "rathena_commit": "master",
+                  "packet_version": "20180418",
+                  "server_mode": "classic",
+                  "renewal": "false",
+                  "platforms": "linux/amd64"
+                }
+              ]
+            }
+            EOF
+            )
+          fi
+
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
 
   build-and-push:
+    needs: generate-matrix
     runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
     permissions:
       contents: read
       packages: write
-
-    strategy:
-      matrix:
-        SERVER_MODE: ["renewal"]
-        PACKET_VERSION: ["20180418", "20190605", "20200401", "latest"]
+      attestations: write
+      id-token: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Get current date
-      id: get-date
-      run: |
-        echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+      - name: Extract metadata for Docker tags
+        id: meta
+        run: |
+          # Generate tags based on build parameters
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          DATE=$(date +'%Y%m%d')
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
+          # Base tags
+          TAGS="ghcr.io/${{ github.repository }}:${DATE}-${SHORT_SHA}"
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+          # Add descriptive tags
+          TAGS="${TAGS},ghcr.io/${{ github.repository }}:${DATE}"
+          TAGS="${TAGS},ghcr.io/${{ github.repository }}:packetver${{ matrix.packet_version }}-${{ matrix.server_mode }}-${DATE}"
 
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v2
-      with:
-        registry: ghcr.io
-        username: ${{ github.repository_owner }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+          # Add version-specific tags
+          if [[ "${{ matrix.rathena_commit }}" != "master" ]]; then
+            COMMIT_SHORT=$(echo "${{ matrix.rathena_commit }}" | cut -c1-8)
+            TAGS="${TAGS},ghcr.io/${{ github.repository }}:commit-${COMMIT_SHORT}-packetver${{ matrix.packet_version }}-${{ matrix.server_mode }}"
+          fi
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: linux/amd64
-        push: true
-        tags: |
-          ghcr.io/${{ github.repository }}/rathena-packetver${{ matrix.PACKET_VERSION }}:${{ matrix.SERVER_MODE }}-${{ steps.get-date.outputs.date }}
-        build-args: |
-          SERVER_MODE=${{ matrix.SERVER_MODE }}
-          PACKET_VERSION=${{ matrix.PACKET_VERSION }}
+          # Add latest tag for main branch builds
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] && [[ "${{ matrix.rathena_commit }}" == "master" ]] && [[ "${{ matrix.packet_version }}" == "20200401" ]]; then
+            if [[ "${{ matrix.server_mode }}" == "classic" ]]; then
+              TAGS="${TAGS},ghcr.io/${{ github.repository }}:latest"
+              TAGS="${TAGS},ghcr.io/${{ github.repository }}:classic-latest"
+            else
+              TAGS="${TAGS},ghcr.io/${{ github.repository }}:renewal-latest"
+            fi
+          fi
+
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "labels=org.opencontainers.image.title=rAthena Docker Server,org.opencontainers.image.description=Dockerized rAthena server built from commit ${{ matrix.rathena_commit }} with packetver ${{ matrix.packet_version }} (${{ matrix.server_mode }} mode),org.opencontainers.image.vendor=${{ github.repository_owner }},org.opencontainers.image.version=${{ matrix.packet_version }},org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ'),rathena.commit=${{ matrix.rathena_commit }},rathena.packetver=${{ matrix.packet_version }},rathena.server_mode=${{ matrix.server_mode }},rathena.renewal=${{ matrix.renewal }}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:master
+            network=host
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platforms }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            PACKETVER=${{ matrix.packet_version }}
+            SERVER_MODE=${{ matrix.server_mode }}
+            RENEWAL=${{ matrix.renewal }}
+            RATHENA_COMMIT=${{ matrix.rathena_commit }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify build
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+        run: |
+          # Pull and test the built image
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+          docker pull ${IMAGE_TAG}
+
+          # Verify binaries exist
+          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/login-server
+          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/char-server
+          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/map-server
+          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/web-server
+
+          # Verify rAthena commit
+          docker run --rm ${IMAGE_TAG} sh -c 'cd /opt/rAthena && git log --oneline -1'
+
+      - name: Generate SBOM report
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.tags }}
+
+      - name: Vulnerability scan
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: anchore/scan-action@v3
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.tags }}
+          fail-build: false
+          severity-cutoff: high
+
+  update-readme:
+    needs: build-and-push
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update README with latest image tags
+        run: |
+          # Extract latest build info
+          DATE=$(date +'%Y-%m-%d')
+          echo "Updating README with build info from ${DATE}"
+
+          # This would update README.md with latest image tags
+          # For now, just create a placeholder
+          echo "<!-- Auto-generated build info: ${DATE} -->" > build-info.md
+
+      - name: Commit updates
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: update build information"
+          file_pattern: build-info.md README.md

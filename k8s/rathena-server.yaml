@@ -5,46 +5,46 @@ metadata:
   labels:
     app: rathena
 type: Opaque
-data:
-  mysql-pwd: cDRzc0B3MHJkCg== # p4ss@w0rd in base64
-  intersrv-passwd: cDRzc0B3MHJkCg== # p4ss@w0rd in base64
+stringData:
+  mysql-pwd: oiDzEqNerL7HeA3fU # p4ss@w0rd in base64
+  intersrv-passwd: p1 # p4ss@w0rd in base64
 ---
-# https://github.com/kubernetes/contrib/tree/master/for-demos/proxy-to-service
-apiVersion: v1
-kind: Pod
-metadata:
-  name: rathena-proxy
-  labels:
-    app: rathena
-    version: v1.0
-    component: proxy
-spec:
-  hostname: rathena-proxy
-  containers:
-  - name: login-proxy-tcp
-    image: k8s.gcr.io/proxy-to-service:v2
-    args: [ "tcp", "6900", "rathena-server" ]
-    ports:
-    - name: login
-      protocol: TCP
-      containerPort: 6900
-      hostPort: 6900
-  - name: char-proxy-tcp
-    image: k8s.gcr.io/proxy-to-service:v2
-    args: [ "tcp", "6121", "rathena-server" ]
-    ports:
-    - name: char
-      protocol: TCP
-      containerPort: 6121
-      hostPort: 6121
-  - name: map-proxy-tcp
-    image: k8s.gcr.io/proxy-to-service:v2
-    args: [ "tcp", "5121", "rathena-server" ]
-    ports:
-    - name: map
-      protocol: TCP
-      containerPort: 5121
-      hostPort: 5121
+## https://github.com/kubernetes/contrib/tree/master/for-demos/proxy-to-service
+#apiVersion: v1
+#kind: Pod
+#metadata:
+#  name: rathena-proxy
+#  labels:
+#    app: rathena
+#    version: v1.0
+#    component: proxy
+#spec:
+#  hostname: rathena-proxy
+#  containers:
+#  - name: login-proxy-tcp
+#    image: k8s.gcr.io/proxy-to-service:v2
+#    args: [ "tcp", "6900", "rathena-server" ]
+#    ports:
+#    - name: login
+#      protocol: TCP
+#      containerPort: 6900
+#      hostPort: 6900
+#  - name: char-proxy-tcp
+#    image: k8s.gcr.io/proxy-to-service:v2
+#    args: [ "tcp", "6121", "rathena-server" ]
+#    ports:
+#    - name: char
+#      protocol: TCP
+#      containerPort: 6121
+#      hostPort: 6121
+#  - name: map-proxy-tcp
+#    image: k8s.gcr.io/proxy-to-service:v2
+#    args: [ "tcp", "5121", "rathena-server" ]
+#    ports:
+#    - name: map
+#      protocol: TCP
+#      containerPort: 5121
+#      hostPort: 5121
 ---
 # Debug machine
 apiVersion: v1
@@ -86,8 +86,8 @@ spec:
     app: rathena
     component: server
     version: v1.0
-  clusterIP: 10.96.0.3 # Default range: 10.96.0.0/12
-  type: ClusterIP
+  #clusterIP: 10.96.254.10 # Default range: 10.96.0.0/12
+  type: LoadBalancer
 ---
 apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2, before 1.8.0 use apps/v1beta1
 kind: Deployment
@@ -112,7 +112,8 @@ spec:
         version: v1.0
     spec:
       containers:
-      - image: cmilanf/rathena:latest
+      #- image: cmilanf/rathena:latest
+      - image: ghcr.io/lenaxia/docker-rathena/rathena-packetver20200401:renewal-20240805
         name: rathena-server
         env:
         - name: MYSQL_PASSWORD
@@ -126,33 +127,33 @@ spec:
               name: rathena-server-pwd
               key: intersrv-passwd
         - name: MYSQL_HOST
-          value: "10.96.0.2"
+          value: "192.168.5.15"
         - name: MYSQL_USERNAME
-          value: "root"
+          value: "ragnarok"
         - name: MYSQL_DATABASE
-          value: "rathena"
+          value: "rathena_renewal"
         - name: SET_SERVER_NAME
           value: "rAthena"
         - name: SET_INTERSRV_USERID
-          value: "user1"
+          value: "s1"
         - name: MYSQL_DROP_DB
-          value: "1"
+          value: "0"
         - name: SET_PINCODE_ENABLED
           value: "no"
         - name: SET_START_POINT
           value: "prontera,155,182"
         - name: ADD_SUBNET_MAP1
-          value: "255.240.0.0:10.96.0.3:10.96.0.3"
+          value: "255.255.255.255:10.96.255.255"
         - name: SET_CHAR_PUBLIC_IP
-          value: "192.168.1.111"
+          value: "192.168.5.105"
         - name: SET_MAP_PUBLIC_IP
-          value: "192.168.1.111"
+          value: "192.168.5.105"
         - name: MYSQL_ACCOUNTSANDCHARS
           value: "1"
-        ports:
-        - containerPort: 6900
-          name: login-server
-        - containerPort: 5121
-          name: map-server
-        - containerPort: 6121
-          name: char-server
+            #        ports:
+            #        - containerPort: 6900
+            #          name: login-server
+            #        - containerPort: 5121
+            #          name: map-server
+            #        - containerPort: 6121
+            #          name: char-server

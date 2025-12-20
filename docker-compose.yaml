@@ -1,16 +1,20 @@
 services:
   rathena:
-    image: ghcr.io/lenaxia/docker-rathena:latest
+    #image: ghcr.io/lenaxia/docker-rathena:latest
+    image: ghcr.io/lenaxia/docker-rathena/rathena-packetver20200401:renewal-20240805
     ports:
       - 6900:6900
       - 6121:6121
       - 5121:5121
     restart: unless-stopped
     environment:
-      - MYSQL_PASSWORD=ragnarok
+      - MYSQL_PASSWORD=oiDzEqNerL7HeA3fU
       - MYSQL_HOST=192.168.5.15
       - MYSQL_USERNAME=ragnarok
       - MYSQL_DATABASE=rathena_renewal
+      - MYSQL_USER=ragnarok
+      - MYSQL_PWD=oiDzEqNerL7HeA3fU
+      - MYSQL_DB=rathena_renewal
       - SET_SERVER_NAME=rAthena
       - SET_INTERSRV_USERID=s1
       - SET_INTERSRV_PASSWD=p1

@@ -1,0 +1,199 @@
+name: Scheduled rAthena Commit Builds
+
+on:
+  schedule:
+    # Build daily at 2 AM UTC to catch new rAthena commits
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      days_back:
+        description: 'Number of days back to check for commits'
+        required: false
+        default: '7'
+        type: string
+      max_commits:
+        description: 'Maximum number of commits to build'
+        required: false
+        default: '5'
+        type: string
+
+jobs:
+  fetch-commits:
+    runs-on: ubuntu-latest
+    outputs:
+      commits: ${{ steps.get-commits.outputs.commits }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch recent rAthena commits
+        id: get-commits
+        run: |
+          # Clone rAthena repo to get commit history
+          git clone --depth 50 https://github.com/rathena/rathena.git /tmp/rathena
+
+          cd /tmp/rathena
+
+          # Get recent commits (last N days)
+          DAYS_BACK="${DAYS_BACK:-7}"
+          MAX_COMMITS="${MAX_COMMITS:-5}"
+
+          # Get commit SHAs from last N days
+          COMMITS=$(git log --since="$DAYS_BACK days ago" --format="%H" -n $MAX_COMMITS | tr '\n' ',' | sed 's/,$//')
+
+          if [ -z "$COMMITS" ]; then
+            # Fallback to master if no recent commits
+            COMMITS="master"
+          fi
+
+          echo "commits=${COMMITS}" >> $GITHUB_OUTPUT
+          echo "Found commits: ${COMMITS}"
+        env:
+          DAYS_BACK: ${{ github.event.inputs.days_back || '7' }}
+          MAX_COMMITS: ${{ github.event.inputs.max_commits || '5' }}
+
+  build-commits:
+    needs: fetch-commits
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        commit: ${{ fromJson(format('[{0}]', needs.fetch-commits.outputs.commits)) }}
+        config:
+          - {packet_version: '20200401', server_mode: 'classic', renewal: 'false'}
+          - {packet_version: '20200401', server_mode: 'renewal', renewal: 'true'}
+        platform: ['linux/amd64']
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract commit short SHA
+        id: commit-info
+        run: |
+          SHORT_SHA=$(echo "${{ matrix.commit }}" | cut -c1-8)
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+          # If commit is "master", we'll use a date-based tag
+          if [[ "${{ matrix.commit }}" == "master" ]]; then
+            echo "tag_type=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag_type=commit" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push commit-based image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:commit-${{ steps.commit-info.outputs.short_sha }}-packetver${{ matrix.config.packet_version }}-${{ matrix.config.server_mode }}
+            ghcr.io/${{ github.repository }}:commit-${{ steps.commit-info.outputs.short_sha }}
+          build-args: |
+            PACKETVER=${{ matrix.config.packet_version }}
+            SERVER_MODE=${{ matrix.config.server_mode }}
+            RENEWAL=${{ matrix.config.renewal }}
+            RATHENA_COMMIT=${{ matrix.commit }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Verify build
+        run: |
+          IMAGE_TAG="ghcr.io/${{ github.repository }}:commit-${{ steps.commit-info.outputs.short_sha }}-packetver${{ matrix.config.packet_version }}-${{ matrix.config.server_mode }}"
+          docker pull ${IMAGE_TAG}
+
+          # Quick verification
+          docker run --rm ${IMAGE_TAG} sh -c '
+            echo "=== Build Information ==="
+            echo "rAthena commit: $RATHENA_COMMIT"
+            echo "Packet version: $PACKETVER"
+            echo "Server mode: $SERVER_MODE"
+            echo "Renewal mode: $RENEWAL"
+            echo ""
+            echo "=== Binaries ==="
+            ls -la /opt/rAthena/*-server
+          '
+
+  update-commit-manifest:
+    needs: build-commits
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update commit manifest
+        run: |
+          # Create or update a manifest file of built commits
+          DATE=$(date +'%Y-%m-%d')
+          MANIFEST_FILE="built-commits.md"
+
+          echo "# Built rAthena Commits" > ${MANIFEST_FILE}
+          echo "" >> ${MANIFEST_FILE}
+          echo "Last updated: ${DATE}" >> ${MANIFEST_FILE}
+          echo "" >> ${MANIFEST_FILE}
+          echo "| Commit SHA | Built Date | Packet Version | Server Mode |" >> ${MANIFEST_FILE}
+          echo "|------------|------------|----------------|-------------|" >> ${MANIFEST_FILE}
+
+          # Extract commit info from matrix
+          COMMITS="${{ needs.fetch-commits.outputs.commits }}"
+          IFS=',' read -ra COMMIT_ARRAY <<< "$COMMITS"
+
+          for COMMIT in "${COMMIT_ARRAY[@]}"; do
+            SHORT_SHA=$(echo "${COMMIT}" | cut -c1-8)
+            echo "| \`${SHORT_SHA}\` | ${DATE} | 20200401 | classic/renewal |" >> ${MANIFEST_FILE}
+          done
+
+          echo "" >> ${MANIFEST_FILE}
+          echo "## Usage" >> ${MANIFEST_FILE}
+          echo "" >> ${MANIFEST_FILE}
+          echo "To use a specific commit:" >> ${MANIFEST_FILE}
+          echo '```bash' >> ${MANIFEST_FILE}
+          echo 'docker pull ghcr.io/${{ github.repository }}:commit-abc123-packetver20200401-classic' >> ${MANIFEST_FILE}
+          echo '```' >> ${MANIFEST_FILE}
+
+      - name: Commit manifest updates
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: update built commits manifest"
+          file_pattern: built-commits.md
+
+  cleanup-old-images:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'schedule' }}
+    needs: [build-commits, update-commit-manifest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Clean up old commit-based images
+        run: |
+          # Note: GitHub Packages cleanup requires additional permissions
+          # This is a placeholder for image cleanup logic
+          echo "Image cleanup would run here"
+          echo "Typically would:"
+          echo "1. List images older than 30 days"
+          echo "2. Keep at least 5 most recent commits per configuration"
+          echo "3. Delete old images"
+
+          # For now, just log the intent
+          echo "Cleanup scheduled for commit-based images older than 30 days"

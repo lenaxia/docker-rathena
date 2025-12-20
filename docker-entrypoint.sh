@@ -35,7 +35,20 @@ setup_mysql_config () {
     if [ -z "${MYSQL_PASSWORD}" ]; then printf "Missing MYSQL_PASSWORD environment variable. Unable to continue.\n"; exit 1; fi
 
     printf "Setting up MySQL on Login Server...\n"
+    # Set YAML mode (no SQL for game data)
     sed -i "s/^use_sql_db:.*/use_sql_db: no/" /opt/rAthena/conf/inter_athena.conf
+
+    # Set server_type based on RENEWAL runtime flag (case-insensitive)
+    # 0 = Pre-Renewal/Classic, 1 = Renewal
+    RENEWAL_LOWER=$(echo "${RENEWAL}" | tr '[:upper:]' '[:lower:]')
+    if [ "${RENEWAL_LOWER}" = "true" ] || [ "${RENEWAL_LOWER}" = "1" ] || [ "${RENEWAL_LOWER}" = "yes" ]; then
+        printf "Setting server_type to Renewal (1)\n"
+        sed -i "s/^server_type:.*/server_type: 1/" /opt/rAthena/conf/inter_athena.conf
+    else
+        printf "Setting server_type to Classic/Pre-Renewal (0)\n"
+        sed -i "s/^server_type:.*/server_type: 0/" /opt/rAthena/conf/inter_athena.conf
+    fi
+
     sed -i "s/^login_server_ip:.*/login_server_ip: ${MYSQL_HOST}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^login_server_port:.*/login_server_port: ${MYSQL_PORT}/" /opt/rAthena/conf/inter_athena.conf
     sed -i "s/^login_server_id:.*/login_server_id: ${MYSQL_USERNAME}/" /opt/rAthena/conf/inter_athena.conf
@@ -85,25 +98,20 @@ setup_mysql_config () {
     fi
     printf "Checking if database already exists...\n"
     if ! check_database_exist; then
+        printf "Creating database...\n"
         mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "CREATE DATABASE ${MYSQL_DATABASE};"
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/main.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/logs.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db2.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db_re.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_db2_re.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_cash_db.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/item_cash_db2.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db2.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db_re.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_db2_re.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db2.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db_re.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/mob_skill_db2_re.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /opt/rAthena/sql-files/roulette_default_data.sql
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
+
+        printf "Importing essential SQL files (YAML mode - game data loaded from YAML)...\n"
+        # Import all SQL files from /opt/sql directory (only essential files for YAML mode)
+        for sql_file in /opt/sql/*.sql; do
+            if [ -f "$sql_file" ]; then
+                printf "Importing %s\n" "$(basename "$sql_file")"
+                mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} ${MYSQL_DATABASE} < "$sql_file"
+            fi
+        done
+
+        printf "Updating interserver credentials...\n"
+        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} ${MYSQL_DATABASE} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
     fi
 
     if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then

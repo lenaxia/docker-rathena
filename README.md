@@ -32,7 +32,27 @@ The image is based on Alpine Linux and target to run at Linux x64 architectures.
 
 Alpine Linux and rAthena footprints are fairly small and you can run your server with a single machine core and 512 MB RAM memory.
 
-## Environment variables accepted by the image
+## Environment Variables
+
+### Build-time Arguments (Docker build --build-arg):
+
+These arguments control how the image is built:
+
+  * `PACKETVER` - Client packet version (default: `20200401`)
+    - Supported values: `20180418`, `20190605`, `20200401`
+  * `SERVER_MODE` - Compile-time server mode (default: `classic`)
+    - `classic`: Pre-Renewal/Classic mode with `--enable-prere=yes`
+    - `renewal`: Renewal mode
+  * `RENEWAL` - Runtime renewal mode (default: `false`)
+    - `true`/`false`: Controls `server_type` config and YAML directories
+  * `RATHENA_COMMIT` - rAthena git commit to build from (default: `master`)
+    - Can be commit SHA, branch name, or tag
+  * `PACKET_OBFUSCATION` - Enable packet obfuscation (default: `0`)
+    - `0`: Disabled, `1`: Enabled
+
+### Runtime Environment Variables:
+
+These variables are set when running the container:
 
   * `DOWNLOAD_OVERRIDE_CONF_URL`. If defined, it will download a ZIP file with the import configuration overrides. If this is the case, no environment variables applies.
   * `MYSQL_HOST`. Hostname of the MySQL database. Ex: calnus-beta.mysql.database.azure.com
@@ -67,11 +87,107 @@ rAthena is very sensitive to NAT configurations on your network and it is mandat
 
 `SET_CHAR_PUBLIC_IP` and `SET_MAP_PUBLIC_IP` speak by themselves, you just put here their publicly accesible IP addresses.
 
+## GitHub Workflows
+
+This repository includes comprehensive GitHub Actions workflows for automated building, testing, and security scanning.
+
+### Available Workflows:
+
+1. **CI Pipeline** (`ci.yaml`):
+   - Runs on all pull requests and pushes to main
+   - Lints Dockerfile and shell scripts
+   - Validates YAML files
+   - Builds and tests multiple configurations
+   - Integration tests with MySQL
+
+2. **Release Builds** (`release.yaml`):
+   - Builds multi-architecture images (amd64, arm64)
+   - Supports multiple rAthena commits, packet versions, and server modes
+   - Generates SBOM and provenance attestations
+   - Vulnerability scanning
+   - Automated on schedule and manual dispatch
+
+3. **Security Scanning** (`security.yaml`):
+   - Weekly vulnerability scans
+   - Container image scanning
+   - Dependency vulnerability checks
+   - Secrets detection
+   - Runs on PRs and schedule
+
+4. **Scheduled Commit Builds** (`scheduled-builds.yaml`):
+   - Daily builds of recent rAthena commits
+   - Maintains commit-based image tags
+   - Automatic cleanup of old images
+
+### Build Matrix Configuration:
+
+Images are built with the following matrix:
+- **rAthena Commits**: `master` + recent commit SHAs
+- **Packet Versions**: `20180418`, `20190605`, `20200401`
+- **Server Modes**: `classic` (Pre-Renewal) and `renewal`
+- **Platforms**: `linux/amd64`, `linux/arm64`
+
+### Image Tagging Strategy:
+
+Images are tagged with multiple patterns for flexibility:
+- Date-based: `ghcr.io/owner/repo:20241220-abc123def`
+- Commit-based: `ghcr.io/owner/repo:commit-abc123-packetver20200401-classic`
+- Latest: `ghcr.io/owner/repo:latest` (main branch, packetver 20200401, classic)
+- Mode-specific: `ghcr.io/owner/repo:classic-latest`, `ghcr.io/owner/repo:renewal-latest`
+
+### Manual Build Dispatch:
+
+You can manually trigger builds via GitHub Actions with custom parameters:
+- rAthena commit SHA, branch, or tag
+- Server mode (classic/renewal)
+- Packet version
+- Target platforms
+
 ## Usage
 If you have a readily accesible MySQL sever, then usage is straight forward:
 
+### Using Pre-built Images from GitHub Container Registry:
+
+```bash
+# Latest classic mode (default)
+docker run -d -p 6900:6900 -p 6121:6121 -p 5121:5121 \
+  --restart=unless-stopped \
+  --name rathena \
+  -e MYSQL_HOST="mysql-host" \
+  -e MYSQL_USERNAME="username" \
+  -e MYSQL_PASSWORD="password" \
+  -e MYSQL_DATABASE="rathena" \
+  -e ADD_SUBNET_MAP1="255.255.0.0:10.0.0.3:10.0.0.3" \
+  -e SET_CHAR_PUBLIC_IP="your-public-ip" \
+  -e SET_MAP_PUBLIC_IP="your-public-ip" \
+  -e MYSQL_ACCOUNTSANDCHARS="1" \
+  -e SET_SERVER_NAME="My rAthena Server" \
+  ghcr.io/${{ github.repository }}/rathena:latest
+
+# Specific commit and configuration
+docker run -d ... \
+  ghcr.io/${{ github.repository }}/rathena:commit-abc123-packetver20200401-classic
+
+# Renewal mode
+docker run -d ... \
+  ghcr.io/${{ github.repository }}/rathena:renewal-latest
 ```
-docker run -d -p 6900:6900 -p 6121:6121 -p 5121:5121 --restart=unless-stopped --name rathena -e MYSQL_HOST="MYSQL host IP" -e MYSQL_USERNAME="MySQL username" -e MYSQL_PASSWORD="MySQL password" -e MYSQL_DATABASE="rAthena" -e ADD_SUBNET_MAP1="255.255.0.0:10.0.0.3:10.0.0.3" -e SET_CHAR_PUBLIC_IP="52.232.25.13" -e SET_MAP_PUBLIC_IP="52.232.25.13" -e MYSQL_ACCOUNTSANDCHARS="1" -e SET_SERVER_NAME="My dockerized rAthena server" cmilanf/docker-rathena:latest
+
+### Building Custom Images:
+
+```bash
+# Build with specific rAthena commit
+docker build \
+  --build-arg RATHENA_COMMIT=abc123def456 \
+  --build-arg PACKETVER=20200401 \
+  --build-arg SERVER_MODE=classic \
+  --build-arg RENEWAL=false \
+  -t my-rathena .
+
+# Build for specific packet version
+docker build \
+  --build-arg PACKETVER=20180418 \
+  -t my-rathena-2018 .
 ```
 
 ## Related projects:

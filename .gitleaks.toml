@@ -1,0 +1,63 @@
+# Gitleaks configuration for rAthena Docker project
+title = "rAthena Docker Secrets Detection"
+
+[[rules]]
+id = "generic-password"
+description = "Generic password pattern"
+regex = '''(?i)password\s*[=:]\s*['"]?[A-Za-z0-9@$%^&*()_+\-=\[\]{}|;:,.<>?~]{8,}['"]?'''
+tags = ["password", "secret"]
+
+[[rules]]
+id = "mysql-password"
+description = "MySQL password in configuration"
+regex = '''MYSQL_PASSWORD\s*[=:]\s*['"][^'"]{4,}['"]'''
+tags = ["database", "password", "mysql"]
+
+[[rules]]
+id = "jwt-token"
+description = "JSON Web Token"
+regex = '''eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'''
+tags = ["jwt", "token"]
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+tags = ["aws", "key"]
+
+[[rules]]
+id = "ssh-private-key"
+description = "SSH private key"
+regex = '''-----BEGIN [A-Z]+ PRIVATE KEY-----'''
+tags = ["ssh", "private-key"]
+
+[[rules]]
+id = "github-token"
+description = "GitHub token"
+regex = '''gh[pousr]_[A-Za-z0-9_]{36}'''
+tags = ["github", "token"]
+
+# Allowlist specific patterns
+[[allowlist]]
+description = "Example passwords in documentation"
+regexes = [
+  '''password\s*=\s*['"]example['"]''',
+  '''MYSQL_PASSWORD\s*=\s*['"]test['"]''',
+  '''MYSQL_PASSWORD\s*=\s*['"]rathena_pass['"]''',
+]
+
+[[allowlist]]
+paths = [
+  "README.md",
+  "docs/",
+  ".github/ISSUE_TEMPLATE/"
+]
+
+# Global allowlist for test files
+[[allowlist]]
+paths = [
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/test_*",
+  "**/*_test.*"
+]

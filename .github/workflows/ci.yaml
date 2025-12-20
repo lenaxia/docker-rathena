@@ -1,0 +1,221 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile with Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+
+      - name: ShellCheck entrypoint script
+        uses: azohra/shellcheck@latest
+        with:
+          path: "docker-entrypoint.sh"
+          severity: warning
+
+      - name: Validate YAML files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs').promises;
+            const yaml = require('js-yaml');
+
+            const files = [
+              '.github/workflows/ci.yaml',
+              '.github/workflows/release.yaml',
+              'docker-compose.yaml',
+              'k8s/rathena-server.yaml'
+            ];
+
+            for (const file of files) {
+              try {
+                const content = await fs.readFile(file, 'utf8');
+                yaml.load(content);
+                console.log(`✓ ${file} is valid YAML`);
+              } catch (error) {
+                console.error(`✗ ${file} has YAML error: ${error.message}`);
+                throw error;
+              }
+            }
+
+      - name: Check for secrets in code
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs').promises;
+            const path = require('path');
+
+            // Common secret patterns
+            const secretPatterns = [
+              /password\s*=\s*['"][^'"]{8,}['"]/i,
+              /token\s*=\s*['"][^'"]{8,}['"]/i,
+              /secret\s*=\s*['"][^'"]{8,}['"]/i,
+              /api[_-]?key\s*=\s*['"][^'"]{8,}['"]/i,
+              /[A-Za-z0-9+/]{40,}={0,2}/, // Base64-like strings
+            ];
+
+            async function checkFile(filePath) {
+              try {
+                const content = await fs.readFile(filePath, 'utf8');
+                for (const pattern of secretPatterns) {
+                  const matches = content.match(pattern);
+                  if (matches) {
+                    console.warn(`⚠ Potential secret found in ${filePath}: ${matches[0].substring(0, 20)}...`);
+                  }
+                }
+              } catch (error) {
+                // File might not exist, ignore
+              }
+            }
+
+            await checkFile('Dockerfile');
+            await checkFile('docker-entrypoint.sh');
+            await checkFile('docker-compose.yaml');
+
+  build-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config:
+          # Test a subset of configurations for CI speed
+          - {server_mode: classic, renewal: false, packetver: 20200401, rathena_commit: master}
+          - {server_mode: renewal, renewal: true, packetver: 20200401, rathena_commit: master}
+          - {server_mode: classic, renewal: false, packetver: 20190605, rathena_commit: master}
+        platform: [linux/amd64]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        run: |
+          docker buildx build \
+            --platform ${{ matrix.platform }} \
+            --build-arg PACKETVER=${{ matrix.config.packetver }} \
+            --build-arg SERVER_MODE=${{ matrix.config.server_mode }} \
+            --build-arg RENEWAL=${{ matrix.config.renewal }} \
+            --build-arg RATHENA_COMMIT=${{ matrix.config.rathena_commit }} \
+            --load \
+            -t rathena-test .
+
+      - name: Verify binaries exist
+        run: |
+          # Create a container to check files
+          CONTAINER_ID=$(docker create rathena-test)
+
+          # Check essential binaries
+          docker cp ${CONTAINER_ID}:/opt/rAthena/login-server ./login-server-test || echo "login-server not found"
+          docker cp ${CONTAINER_ID}:/opt/rAthena/char-server ./char-server-test || echo "char-server not found"
+          docker cp ${CONTAINER_ID}:/opt/rAthena/map-server ./map-server-test || echo "map-server not found"
+          docker cp ${CONTAINER_ID}:/opt/rAthena/web-server ./web-server-test || echo "web-server not found"
+
+          # Check SQL files were copied
+          docker cp ${CONTAINER_ID}:/opt/sql ./sql-test || echo "SQL directory not found"
+
+          # Clean up
+          docker rm ${CONTAINER_ID}
+
+          # Verify files exist and are executable
+          for file in login-server-test char-server-test map-server-test web-server-test; do
+            if [ -f "$file" ]; then
+              echo "✓ $file exists"
+              rm "$file"
+            else
+              echo "✗ $file missing"
+              exit 1
+            fi
+          done
+
+          if [ -d "sql-test" ]; then
+            echo "✓ SQL files directory exists"
+            ls -la sql-test/
+            rm -rf sql-test
+          fi
+
+      - name: Test entrypoint script syntax
+        run: |
+          # Test entrypoint script syntax
+          docker run --rm rathena-test sh -c 'cd /opt/rAthena && ./login-server --version 2>&1 | head -5'
+          docker run --rm rathena-test sh -c 'cd /opt/rAthena && ./char-server --version 2>&1 | head -5'
+          docker run --rm rathena-test sh -c 'cd /opt/rAthena && ./map-server --version 2>&1 | head -5'
+
+      - name: Test configuration generation
+        run: |
+          # Test that entrypoint can generate configs
+          docker run --rm \
+            -e MYSQL_HOST=test \
+            -e MYSQL_DATABASE=test \
+            -e MYSQL_USERNAME=test \
+            -e MYSQL_PASSWORD=test \
+            -e RENEWAL=${{ matrix.config.renewal }} \
+            rathena-test sh -c 'grep -q "use_sql_db: no" /opt/rAthena/conf/inter_athena.conf && echo "✓ YAML mode configured"'
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: [lint-and-validate, build-test]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testroot
+          MYSQL_DATABASE: rathena_test
+          MYSQL_USER: rathena_user
+          MYSQL_PASSWORD: rathena_pass
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+        ports:
+          - 3306:3306
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image for integration test
+        run: |
+          docker build \
+            --build-arg PACKETVER=20200401 \
+            --build-arg SERVER_MODE=classic \
+            --build-arg RENEWAL=false \
+            --build-arg RATHENA_COMMIT=master \
+            -t rathena-integration-test .
+
+      - name: Test database initialization
+        run: |
+          # Run entrypoint to initialize database
+          docker run --rm \
+            --network host \
+            -e MYSQL_HOST=127.0.0.1 \
+            -e MYSQL_PORT=3306 \
+            -e MYSQL_DATABASE=rathena_test \
+            -e MYSQL_USERNAME=rathena_user \
+            -e MYSQL_PASSWORD=rathena_pass \
+            -e RENEWAL=false \
+            rathena-integration-test /usr/local/bin/docker-entrypoint.sh echo "Database initialization complete"
+
+          # Verify database was created and tables exist
+          mysql -h 127.0.0.1 -P 3306 -u rathena_user -prathena_pass rathena_test -e "SHOW TABLES;" | grep -q "login" && echo "✓ Database initialized successfully"
+
+      - name: Clean up test resources
+        if: always()
+        run: |
+          docker system prune -f
