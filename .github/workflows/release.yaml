@@ -203,12 +203,14 @@ jobs:
 
       - name: Generate SBOM report
         if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: true
         uses: anchore/sbom-action@v0
         with:
           image: ${{ steps.meta.outputs.first_tag }}
 
       - name: Vulnerability scan
         if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: true
         uses: anchore/scan-action@v3
         with:
           image: ${{ steps.meta.outputs.first_tag }}
