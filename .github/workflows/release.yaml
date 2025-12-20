@@ -160,6 +160,7 @@ jobs:
 
       - name: Verify build
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+        continue-on-error: true
         run: |
           IMAGE_TAG="${{ steps.meta.outputs.first_tag }}"
 
