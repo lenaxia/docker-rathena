@@ -38,16 +38,19 @@ jobs:
           DAYS_BACK="${DAYS_BACK:-7}"
           MAX_COMMITS="${MAX_COMMITS:-5}"
 
-          # Get commit SHAs from last N days
-          COMMITS=$(git log --since="$DAYS_BACK days ago" --format="%H" -n $MAX_COMMITS | tr '\n' ',' | sed 's/,$//')
+          # Get commit SHAs from last N days and format as JSON array
+          COMMITS_RAW=$(git log --since="$DAYS_BACK days ago" --format="%H" -n $MAX_COMMITS)
 
-          if [ -z "$COMMITS" ]; then
+          if [ -z "$COMMITS_RAW" ]; then
             # Fallback to master if no recent commits
-            COMMITS="master"
+            COMMITS_JSON='["master"]'
+          else
+            # Convert to JSON array
+            COMMITS_JSON=$(echo "$COMMITS_RAW" | jq -R -s -c 'split("\n") | map(select(length > 0))')
           fi
 
-          echo "commits=${COMMITS}" >> $GITHUB_OUTPUT
-          echo "Found commits: ${COMMITS}"
+          echo "commits=${COMMITS_JSON}" >> $GITHUB_OUTPUT
+          echo "Found commits: ${COMMITS_JSON}"
         env:
           DAYS_BACK: ${{ github.event.inputs.days_back || '7' }}
           MAX_COMMITS: ${{ github.event.inputs.max_commits || '5' }}
@@ -57,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        commit: ${{ fromJson(format('[{0}]', needs.fetch-commits.outputs.commits)) }}
+        commit: ${{ fromJson(needs.fetch-commits.outputs.commits) }}
         config:
           - {packet_version: '20200401', server_mode: 'classic', renewal: 'false'}
           - {packet_version: '20200401', server_mode: 'renewal', renewal: 'true'}
@@ -153,11 +156,9 @@ jobs:
           echo "| Commit SHA | Built Date | Packet Version | Server Mode |" >> ${MANIFEST_FILE}
           echo "|------------|------------|----------------|-------------|" >> ${MANIFEST_FILE}
 
-          # Extract commit info from matrix
-          COMMITS="${{ needs.fetch-commits.outputs.commits }}"
-          IFS=',' read -ra COMMIT_ARRAY <<< "$COMMITS"
-
-          for COMMIT in "${COMMIT_ARRAY[@]}"; do
+          # Extract commit info from JSON array
+          COMMITS='${{ needs.fetch-commits.outputs.commits }}'
+          echo "$COMMITS" | jq -r '.[]' | while read -r COMMIT; do
             SHORT_SHA=$(echo "${COMMIT}" | cut -c1-8)
             echo "| \`${SHORT_SHA}\` | ${DATE} | 20200401 | classic/renewal |" >> ${MANIFEST_FILE}
           done

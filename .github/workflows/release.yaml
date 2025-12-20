@@ -155,6 +155,9 @@ jobs:
           fi
 
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          # Extract first tag for single image reference (SBOM, vulnerability scan)
+          FIRST_TAG=$(echo "${TAGS}" | cut -d',' -f1)
+          echo "first_tag=${FIRST_TAG}" >> $GITHUB_OUTPUT
           echo "labels=org.opencontainers.image.title=rAthena Docker Server,org.opencontainers.image.description=Dockerized rAthena server built from commit ${{ matrix.rathena_commit }} with packetver ${{ matrix.packet_version }} (${{ matrix.server_mode }} mode),org.opencontainers.image.vendor=${{ github.repository_owner }},org.opencontainers.image.version=${{ matrix.packet_version }},org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ'),rathena.commit=${{ matrix.rathena_commit }},rathena.packetver=${{ matrix.packet_version }},rathena.server_mode=${{ matrix.server_mode }},rathena.renewal=${{ matrix.renewal }}" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
@@ -196,7 +199,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
         run: |
           # Pull and test the built image
-          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+          IMAGE_TAG="${{ steps.meta.outputs.first_tag }}"
           docker pull ${IMAGE_TAG}
 
           # Verify binaries exist
@@ -212,13 +215,13 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         uses: anchore/sbom-action@v0
         with:
-          image: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.tags }}
+          image: ${{ steps.meta.outputs.first_tag }}
 
       - name: Vulnerability scan
         if: ${{ github.event_name != 'pull_request' }}
         uses: anchore/scan-action@v3
         with:
-          image: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.tags }}
+          image: ${{ steps.meta.outputs.first_tag }}
           fail-build: false
           severity-cutoff: high
 
