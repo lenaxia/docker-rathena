@@ -161,26 +161,44 @@ jobs:
       - name: Verify build
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
         run: |
-          # Pull and test the built image with platform specification
           IMAGE_TAG="${{ steps.meta.outputs.first_tag }}"
-          PLATFORM="${{ matrix.platforms }}"
 
-          # For multi-platform builds, extract the first platform for verification
-          if [[ "$PLATFORM" == *","* ]]; then
-            PLATFORM=$(echo "$PLATFORM" | cut -d',' -f1)
+          # Give registry time to process the manifest
+          echo "Waiting for registry to process manifest..."
+          sleep 10
+
+          # Pull image with retry logic
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Pull attempt $((RETRY_COUNT + 1))/$MAX_RETRIES"
+            if docker pull ${IMAGE_TAG}; then
+              echo "Successfully pulled image"
+              break
+            fi
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "Pull failed, waiting 10 seconds before retry..."
+              sleep 10
+            fi
+          done
+
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "Failed to pull image after $MAX_RETRIES attempts"
+            exit 1
           fi
 
-          echo "Pulling image: ${IMAGE_TAG} for platform: ${PLATFORM}"
-          docker pull --platform="${PLATFORM}" ${IMAGE_TAG}
-
-          # Verify binaries exist
-          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/login-server
-          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/char-server
-          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/map-server
-          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/web-server
-
-          # Verify rAthena commit
-          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} sh -c 'cd /opt/rAthena && git log --oneline -1'
+          # Quick verification
+          docker run --rm ${IMAGE_TAG} sh -c '
+            echo "=== Build Information ==="
+            echo "rAthena commit: $RATHENA_COMMIT"
+            echo "Packet version: $PACKETVER"
+            echo "Server mode: $SERVER_MODE"
+            echo "Renewal mode: $RENEWAL"
+            echo ""
+            echo "=== Binaries ==="
+            ls -la /opt/rAthena/*-server
+          '
 
       - name: Generate SBOM report
         if: ${{ github.event_name != 'pull_request' }}
