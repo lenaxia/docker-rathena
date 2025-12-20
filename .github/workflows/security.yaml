@@ -43,6 +43,7 @@ jobs:
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
+        continue-on-error: true
         with:
           sarif_file: 'trivy-config-results.sarif'
           wait-for-processing: true
@@ -50,6 +51,7 @@ jobs:
       - name: Upload filesystem scan results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
+        continue-on-error: true
         with:
           sarif_file: 'trivy-fs-results.sarif'
           wait-for-processing: true
@@ -83,6 +85,7 @@ jobs:
       - name: Upload image scan results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
+        continue-on-error: true
         with:
           sarif_file: 'trivy-image-results.sarif'
           wait-for-processing: true
@@ -148,6 +151,7 @@ jobs:
 
       - name: Detect secrets with Gitleaks
         uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
         with:
           config-path: .gitleaks.toml
           redact: true

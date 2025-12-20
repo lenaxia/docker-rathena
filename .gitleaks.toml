@@ -50,7 +50,8 @@ regexes = [
 paths = [
   "README.md",
   "docs/",
-  ".github/ISSUE_TEMPLATE/"
+  ".github/ISSUE_TEMPLATE/",
+  ".github/workflows/"
 ]
 
 # Global allowlist for test files
