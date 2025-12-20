@@ -20,9 +20,9 @@ jobs:
           failure-threshold: warning
 
       - name: ShellCheck entrypoint script
-        uses: azohra/shellcheck@latest
+        uses: ludeeus/action-shellcheck@master
         with:
-          path: "docker-entrypoint.sh"
+          scandir: '.'
           severity: warning
 
       - name: Validate YAML files
