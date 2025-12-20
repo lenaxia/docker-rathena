@@ -155,24 +155,32 @@ jobs:
             SERVER_MODE=${{ matrix.server_mode }}
             RENEWAL=${{ matrix.renewal }}
             RATHENA_COMMIT=${{ matrix.rathena_commit }}
-          provenance: mode=max
-          sbom: true
+          provenance: false
+          sbom: false
 
       - name: Verify build
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
         run: |
-          # Pull and test the built image
+          # Pull and test the built image with platform specification
           IMAGE_TAG="${{ steps.meta.outputs.first_tag }}"
-          docker pull ${IMAGE_TAG}
+          PLATFORM="${{ matrix.platforms }}"
+
+          # For multi-platform builds, extract the first platform for verification
+          if [[ "$PLATFORM" == *","* ]]; then
+            PLATFORM=$(echo "$PLATFORM" | cut -d',' -f1)
+          fi
+
+          echo "Pulling image: ${IMAGE_TAG} for platform: ${PLATFORM}"
+          docker pull --platform="${PLATFORM}" ${IMAGE_TAG}
 
           # Verify binaries exist
-          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/login-server
-          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/char-server
-          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/map-server
-          docker run --rm ${IMAGE_TAG} ls -la /opt/rAthena/web-server
+          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/login-server
+          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/char-server
+          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/map-server
+          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} ls -la /opt/rAthena/web-server
 
           # Verify rAthena commit
-          docker run --rm ${IMAGE_TAG} sh -c 'cd /opt/rAthena && git log --oneline -1'
+          docker run --rm --platform="${PLATFORM}" ${IMAGE_TAG} sh -c 'cd /opt/rAthena && git log --oneline -1'
 
       - name: Generate SBOM report
         if: ${{ github.event_name != 'pull_request' }}
