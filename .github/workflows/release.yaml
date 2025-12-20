@@ -53,59 +53,22 @@ jobs:
         run: |
           # Default matrix for manual triggers
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            MATRIX=$(cat <<EOF
-            {
-              "include": [{
-                "rathena_commit": "${{ github.event.inputs.rathena_commit }}",
-                "packet_version": "${{ github.event.inputs.packet_version }}",
-                "server_mode": "${{ github.event.inputs.server_mode }}",
-                "renewal": "${{ github.event.inputs.server_mode == 'renewal' && 'true' || 'false' }}",
-                "platforms": "${{ github.event.inputs.platforms }}"
-              }]
-            }
-            EOF
-            )
+            # Determine renewal based on server mode
+            if [[ "${{ github.event.inputs.server_mode }}" == "renewal" ]]; then
+              RENEWAL="true"
+            else
+              RENEWAL="false"
+            fi
+
+            # Create JSON without heredoc to avoid whitespace issues
+            MATRIX='{"include":[{"rathena_commit":"${{ github.event.inputs.rathena_commit }}","packet_version":"${{ github.event.inputs.packet_version }}","server_mode":"${{ github.event.inputs.server_mode }}","renewal":"'"${RENEWAL}"'","platforms":"${{ github.event.inputs.platforms }}"}]}'
           else
             # For scheduled/auto builds, use predefined matrix
-            # This can be expanded to fetch recent commits dynamically
-            MATRIX=$(cat <<EOF
-            {
-              "include": [
-                {
-                  "rathena_commit": "master",
-                  "packet_version": "20200401",
-                  "server_mode": "classic",
-                  "renewal": "false",
-                  "platforms": "linux/amd64,linux/arm64"
-                },
-                {
-                  "rathena_commit": "master",
-                  "packet_version": "20200401",
-                  "server_mode": "renewal",
-                  "renewal": "true",
-                  "platforms": "linux/amd64,linux/arm64"
-                },
-                {
-                  "rathena_commit": "master",
-                  "packet_version": "20190605",
-                  "server_mode": "classic",
-                  "renewal": "false",
-                  "platforms": "linux/amd64"
-                },
-                {
-                  "rathena_commit": "master",
-                  "packet_version": "20180418",
-                  "server_mode": "classic",
-                  "renewal": "false",
-                  "platforms": "linux/amd64"
-                }
-              ]
-            }
-            EOF
-            )
+            MATRIX='{"include":[{"rathena_commit":"master","packet_version":"20200401","server_mode":"classic","renewal":"false","platforms":"linux/amd64"},{"rathena_commit":"master","packet_version":"20200401","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"}]}'
           fi
 
           echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+          echo "Generated matrix: ${MATRIX}"
 
   build-and-push:
     needs: generate-matrix
