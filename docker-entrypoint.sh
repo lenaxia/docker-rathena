@@ -20,6 +20,16 @@ check_database_exist () {
     fi
 }
 
+check_tables_exist () {
+    # Check if essential tables exist in the database
+    TABLE_COUNT=`mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D ${MYSQL_DATABASE} -sse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${MYSQL_DATABASE}' AND table_name IN ('login', 'char', 'storage', 'party', 'guild');"`
+    if [ "${TABLE_COUNT}" -ge 5 ]; then
+        return 0;
+    else
+        return 1;
+    fi
+}
+
 setup_init () {
     if ! [ -z "${SET_MOTD}" ]; then printf "%s\n" "${SET_MOTD}" > /opt/rAthena/conf/motd.txt; fi
     setup_mysql_config
@@ -100,7 +110,10 @@ setup_mysql_config () {
     if ! check_database_exist; then
         printf "Creating database...\n"
         mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "CREATE DATABASE ${MYSQL_DATABASE};"
+    fi
 
+    printf "Checking if tables exist...\n"
+    if ! check_tables_exist; then
         printf "Importing essential SQL files (YAML mode - game data loaded from YAML)...\n"
         # Import all SQL files from /opt/sql directory (only essential files for YAML mode)
         for sql_file in /opt/sql/*.sql; do
@@ -112,6 +125,8 @@ setup_mysql_config () {
 
         printf "Updating interserver credentials...\n"
         mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} ${MYSQL_DATABASE} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
+    else
+        printf "Tables already exist, skipping SQL import.\n"
     fi
 
     if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then
