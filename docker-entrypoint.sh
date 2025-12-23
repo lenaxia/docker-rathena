@@ -131,7 +131,65 @@ setup_mysql_config () {
 
     if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then
         printf "Populating accounts and characters"
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /root/accountsandchars.sql
+
+        # Prepare GM account variables from environment (with defaults)
+        GM1_USER="${GM1_USER:-Admin}"
+        GM1_PASS="${GM1_PASS:-Melon.77}"
+        GM1_CHAR="${GM1_CHAR:-${GM1_USER}}"
+        GM1_EMAIL="${GM1_EMAIL:-${GM1_USER}@ragnarok.com}"
+        GM2_USER="${GM2_USER:-Almarc}"
+        GM2_PASS="${GM2_PASS:-Melon.77}"
+        GM2_CHAR="${GM2_CHAR:-${GM2_USER}}"
+        GM2_EMAIL="${GM2_EMAIL:-${GM2_USER}@ragnarok.com}"
+        GM_SEX="${GM_SEX:-M}"
+
+        # Build the SQL variable setup commands
+        SQL_VARS="SET @GM1_USER = '${GM1_USER}'; \
+                  SET @GM1_PASS = '${GM1_PASS}'; \
+                  SET @GM1_CHAR = '${GM1_CHAR}'; \
+                  SET @GM1_EMAIL = '${GM1_EMAIL}'; \
+                  SET @GM2_USER = '${GM2_USER}'; \
+                  SET @GM2_PASS = '${GM2_PASS}'; \
+                  SET @GM2_CHAR = '${GM2_CHAR}'; \
+                  SET @GM2_EMAIL = '${GM2_EMAIL}'; \
+                  SET @GM_SEX = '${GM_SEX}';"
+
+        printf "\n  Using GM accounts: ${GM1_USER} (${GM1_CHAR}), ${GM2_USER} (${GM2_CHAR})\n"
+
+        # First attempt: Try executing the script normally
+        if { echo "${SQL_VARS}"; cat /root/accountsandchars.sql; } | mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} 2>/tmp/mysql_error.log; then
+            printf " - Success!\n"
+        else
+            # Check if the error is related to function creation with binary logging
+            if grep -q "log_bin_trust_function_creators\|DETERMINISTIC\|NO SQL\|READS SQL DATA" /tmp/mysql_error.log 2>/dev/null; then
+                printf " - Function creation blocked by binary logging, trying alternative approach...\n"
+
+                # Second attempt: Try to enable function creators for this session and retry
+                if mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} -e "SET SESSION sql_log_bin = 0;" 2>/dev/null && \
+                   { echo "${SQL_VARS}"; cat /root/accountsandchars.sql; } | mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} 2>/dev/null; then
+                    printf " - Success with alternative approach!\n"
+                else
+                    printf " - Alternative approach failed, trying root user if available...\n"
+
+                    # Third attempt: Try with root user if we have credentials
+                    if ! [ -z "${MYSQL_ROOT_PASSWORD}" ] && \
+                       mysql -uroot -p${MYSQL_ROOT_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} -e "SET GLOBAL log_bin_trust_function_creators = 1;" 2>/dev/null && \
+                       { echo "${SQL_VARS}"; cat /root/accountsandchars.sql; } | mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} 2>/dev/null; then
+                        printf " - Success with root privileges!\n"
+                    else
+                        printf " - All attempts failed. Account creation skipped.\n"
+                        printf "   You may need to manually set 'log_bin_trust_function_creators=1' on your MySQL server\n"
+                        printf "   or run the account creation script manually after startup.\n"
+                    fi
+                fi
+            else
+                printf " - Failed with unknown error:\n"
+                cat /tmp/mysql_error.log 2>/dev/null || printf "   Could not read error details\n"
+            fi
+        fi
+
+        # Cleanup temporary error log
+        rm -f /tmp/mysql_error.log 2>/dev/null
     fi
 }
 
@@ -186,6 +244,14 @@ setup_config () {
 
     if ! [ -z "${SET_LOG_FILTER}" ]; then sed -i "s/^log_filter:.*/log_filter: ${SET_LOG_FILTER}/" /opt/rAthena/conf/login_athena.conf; fi
     if ! [ -z "${SET_LOG_CHAT}" ]; then sed -i "s/^log_chat:.*/log_chat: ${SET_LOG_CHAT}/" /opt/rAthena/conf/login_athena.conf; fi
+
+    # IP Ban configuration
+    if ! [ -z "${SET_IPBAN_ENABLE}" ]; then sed -i "s/^ipban_enable:.*/ipban_enable: ${SET_IPBAN_ENABLE}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban:.*/ipban_dynamic_pass_failure_ban: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_INTERVAL}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban_interval:.*/ipban_dynamic_pass_failure_ban_interval: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_INTERVAL}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_LIMIT}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban_limit:.*/ipban_dynamic_pass_failure_ban_limit: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_LIMIT}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_DURATION}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban_duration:.*/ipban_dynamic_pass_failure_ban_duration: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_DURATION}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_CLEANUP_INTERVAL}" ]; then sed -i "s/^ipban_cleanup_interval:.*/ipban_cleanup_interval: ${SET_IPBAN_CLEANUP_INTERVAL}/" /opt/rAthena/conf/login_athena.conf; fi
 }
 
 enable_custom_npc () {

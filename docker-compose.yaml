@@ -1,27 +1,51 @@
 services:
   rathena:
     #image: ghcr.io/lenaxia/docker-rathena:latest
-    image: ghcr.io/lenaxia/docker-rathena/rathena-packetver20200401:renewal-20240805
-    ports:
-      - 6900:6900
-      - 6121:6121
-      - 5121:5121
+    image: ghcr.io/lenaxia/docker-rathena:packetver20200401-renewal-20251220@sha256:9cfd0a063bb9a61e094d79eae1f7823f70aef0f6f4948b0178169792e4b307b5
+    network_mode: host
     restart: unless-stopped
     environment:
-      - MYSQL_PASSWORD=oiDzEqNerL7HeA3fU
+      # Database connection
       - MYSQL_HOST=192.168.5.15
-      - MYSQL_USERNAME=ragnarok
+      - MYSQL_PORT=3306
       - MYSQL_DATABASE=rathena_renewal
+      - MYSQL_USERNAME=ragnarok
+      - MYSQL_PASSWORD=oiDzEqNerL7HeA3fU
       - MYSQL_USER=ragnarok
       - MYSQL_PWD=oiDzEqNerL7HeA3fU
       - MYSQL_DB=rathena_renewal
+
+      # Server mode (CRITICAL: Set to true for Renewal)
+      - RENEWAL=true
+
+      # Server configuration
       - SET_SERVER_NAME=rAthena
       - SET_INTERSRV_USERID=s1
       - SET_INTERSRV_PASSWD=p1
-      - MYSQL_DROP_DB=0
+
+      # Server IPs (matching Helm configuration)
+      - SET_CHAR_PUBLIC_IP=192.168.5.145
+      - SET_MAP_PUBLIC_IP=192.168.5.145
+      - SET_MAP_TO_CHAR_IP=192.168.5.145
+
+      # Network mapping (matching Helm configuration)
+      - ADD_SUBNET_MAP1=255.255.255.255:10.96.255.255
+
+      # Gameplay settings
       - SET_PINCODE_ENABLED=no
       - SET_START_POINT=prontera,155,182
-      - ADD_SUBNET_MAP1=255.255.255.0:192.168.2.102:192.168.2.102
-      - SET_CHAR_PUBLIC_IP=192.168.2.102
-      - SET_MAP_PUBLIC_IP=192.168.2.102
+
+      # Database options
+      - MYSQL_DROP_DB=0
       - MYSQL_ACCOUNTSANDCHARS=1
+
+      # GM Account configuration (optional - defaults shown)
+      - GM1_USER=Admin
+      - GM1_PASS=Melon.77
+      - GM1_CHAR=Admin
+      - GM1_EMAIL=admin@ragnarok.com
+      - GM2_USER=Almarc
+      - GM2_PASS=Melon.77
+      - GM2_CHAR=Almarc
+      - GM2_EMAIL=almarc@ragnarok.com
+      - GM_SEX=M

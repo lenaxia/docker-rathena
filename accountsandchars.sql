@@ -1,3 +1,59 @@
+-- ######################################################################
+-- # RagnarokOnline Account and Character Creation Script
+-- ######################################################################
+--
+-- This script creates GM accounts, bot accounts, and their characters
+-- with items and skills for testing purposes.
+--
+-- ###### CONFIGURATION ######
+--
+-- GM accounts can be customized using MySQL session variables.
+-- Set these BEFORE running this script:
+--
+-- @GM1_USER   - First GM account username (default: 'Admin')
+-- @GM1_PASS   - First GM account password (default: 'Melon.77')
+-- @GM1_CHAR   - First GM character name (default: same as @GM1_USER)
+-- @GM1_EMAIL  - First GM email (default: username@ragnarok.com)
+--
+-- @GM2_USER   - Second GM account username (default: 'Almarc')
+-- @GM2_PASS   - Second GM account password (default: 'Melon.77')
+-- @GM2_CHAR   - Second GM character name (default: same as @GM2_USER)
+-- @GM2_EMAIL  - Second GM email (default: username@ragnarok.com)
+--
+-- @GM_SEX     - GM accounts sex (default: 'M')
+--
+-- ###### USAGE EXAMPLES ######
+--
+-- Example 1: Use default GM accounts (Admin and Almarc)
+--   mysql -u root -p database_name < accountsandchars.sql
+--
+-- Example 2: Customize GM accounts from shell
+--   mysql -u root -p database_name <<EOF
+--     SET @GM1_USER = 'MyAdmin';
+--     SET @GM1_PASS = 'MySecurePassword';
+--     SET @GM1_CHAR = 'AdminChar';
+--     SET @GM2_USER = 'MyGM';
+--     SET @GM2_PASS = 'AnotherPassword';
+--     SOURCE accountsandchars.sql;
+--   EOF
+--
+-- Example 3: Use environment variables in a Docker entrypoint script
+--   mysql -u root -p database_name <<EOF
+--     SET @GM1_USER = '${GM1_USER:-Admin}';
+--     SET @GM1_PASS = '${GM1_PASS:-Melon.77}';
+--     SET @GM2_USER = '${GM2_USER:-Almarc}';
+--     SET @GM2_PASS = '${GM2_PASS:-Melon.77}';
+--     SOURCE accountsandchars.sql;
+--   EOF
+--
+-- ###### FORCE MODE ######
+--
+-- By default, this script is idempotent - it won't overwrite existing
+-- accounts. To force recreation, uncomment the cleanDatabase() and
+-- cleanGmAccounts() calls in the ACCOUNTS section below.
+--
+-- ######################################################################
+
 -- ###### PROCEDURES AND FUNCTIONS ######
 DROP EVENT IF EXISTS online_status_sync;
 DROP FUNCTION IF EXISTS call_clean_database;
@@ -14,6 +70,7 @@ DROP PROCEDURE IF EXISTS createGmAccountsAndChars;
 DROP PROCEDURE IF EXISTS createItemsForChars;
 DROP PROCEDURE IF EXISTS createSkillsForChars;
 DROP PROCEDURE IF EXISTS cleanDatabase;
+DROP PROCEDURE IF EXISTS cleanGmAccounts;
 DELIMITER //
 CREATE FUNCTION getRandomSex() RETURNS ENUM('M','F','S')
 BEGIN
@@ -27,11 +84,35 @@ END //
 CREATE PROCEDURE createBotAccounts (IN numBots INT UNSIGNED)
 BEGIN
     DECLARE i INT DEFAULT 0;
+    DECLARE accounts_created INT DEFAULT 0;
+    DECLARE accounts_skipped INT DEFAULT 0;
+
+    -- Create a temporary table to store debug logs
+    DROP TEMPORARY TABLE IF EXISTS debug_log_accounts;
+    CREATE TEMPORARY TABLE IF NOT EXISTS debug_log_accounts (
+        message TEXT
+    );
+
     WHILE i < numBots DO
-        INSERT INTO `login` (userid,user_pass,sex,email,group_id,last_ip,character_slots,pincode)
+        -- Use INSERT IGNORE to skip if account already exists
+        INSERT IGNORE INTO `login` (userid,user_pass,sex,email,group_id,last_ip,character_slots,pincode)
             VALUES (CONCAT('botijo',i),'Melon.77',getRandomSex(),CONCAT('botijo',i,'@ragnarok.com'),0,'0.0.0.0',9,'');
+
+        -- Track if account was created or skipped
+        IF ROW_COUNT() > 0 THEN
+            SET accounts_created = accounts_created + 1;
+        ELSE
+            SET accounts_skipped = accounts_skipped + 1;
+            INSERT INTO debug_log_accounts (message) VALUES (CONCAT('Skipped existing account: botijo', i));
+        END IF;
+
         SET i = i + 1;
     END WHILE;
+
+    -- Log summary
+    INSERT INTO debug_log_accounts (message) VALUES (CONCAT('Summary: ', accounts_created, ' accounts created, ', accounts_skipped, ' accounts skipped'));
+    SELECT * FROM debug_log_accounts;
+    DROP TEMPORARY TABLE IF EXISTS debug_log_accounts;
 END //
 
 -- CHAR creation procudere. There is a lot of cryptic values where, let's try to decypher them:
@@ -196,9 +277,12 @@ BEGIN
     DECLARE i INT DEFAULT 0;
     DECLARE class SMALLINT DEFAULT 0;
     DECLARE cur_account_id INT UNSIGNED;
+    DECLARE cur_userid VARCHAR(50);
     DECLARE cur_sex ENUM('M','F','S') DEFAULT 'F';
+    DECLARE chars_created INT DEFAULT 0;
+    DECLARE chars_skipped INT DEFAULT 0;
     DECLARE done BOOL DEFAULT FALSE;
-    DECLARE cur CURSOR FOR SELECT account_id, sex FROM `login` WHERE userid LIKE CONCAT(account_pattern, '%');
+    DECLARE cur CURSOR FOR SELECT account_id, userid, sex FROM `login` WHERE userid LIKE CONCAT(account_pattern, '%');
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
    
     -- Create temporary tables for save map names and coordinates
@@ -243,9 +327,9 @@ BEGIN
 	 );
 
     OPEN cur;
-    
+
     charPopulateLoop: LOOP
-        FETCH cur INTO cur_account_id, cur_sex;
+        FETCH cur INTO cur_account_id, cur_userid, cur_sex;
         IF done THEN
             CLOSE cur;
             LEAVE charPopulateLoop;
@@ -279,27 +363,36 @@ BEGIN
                             @hair, @hair_color, @clothes_color, @body, @weapon, @shield, @head_top, @head_mid, @head_bottom, @robe);
 
         -- Insert a debug log for the fetched values
-        INSERT INTO debug_log (message) VALUES (CONCAT(i, ': Fetched account_id: ', cur_account_id, ', sex: ', cur_sex));
-        
-        
+        INSERT INTO debug_log (message) VALUES (CONCAT(i, ': Fetched account_id: ', cur_account_id, ', userid: ', cur_userid, ', sex: ', cur_sex));
 
-        INSERT INTO `char` (account_id, char_num, `name`, sex, class, base_level, job_level, base_exp, job_exp,
+        -- Use INSERT IGNORE to skip if character already exists for this account
+        INSERT IGNORE INTO `char` (account_id, char_num, `name`, sex, class, base_level, job_level, base_exp, job_exp,
                                     zeny, str, agi, vit, `int`, dex, luk, max_hp, hp, max_sp, sp, hair, hair_color, clothes_color, body, weapon,
                                     shield, head_top, head_mid, head_bottom, robe, last_map, last_x, last_y, save_map, save_x, save_y)
-        VALUES (cur_account_id, 0, CONCAT('botijo', i), cur_sex, class, @base_level, 50, 0, 0, @zeny, @str,
+        VALUES (cur_account_id, 0, cur_userid, cur_sex, class, @base_level, 50, 0, 0, @zeny, @str,
                 @agi, @vit, @int, @dex, @luk, @max_hp, @max_hp, @max_sp, @max_sp, @hair, @hair_color, @clothes_color, 0, 0, 0,
                 0, 0, 0, 0, @last_map_name, @x, @y, @save_map_name, @save_x, @save_y);
-         
+
+        -- Track if character was created or skipped
+        IF ROW_COUNT() > 0 THEN
+            SET chars_created = chars_created + 1;
+        ELSE
+            SET chars_skipped = chars_skipped + 1;
+            INSERT INTO debug_log (message) VALUES (CONCAT('Skipped existing character for account: ', cur_userid));
+        END IF;
+
         -- Increment the counter
         SET i = i + 1;
     
     END LOOP charPopulateLoop;
-    
-    
+
+    -- Log summary
+    INSERT INTO debug_log (message) VALUES (CONCAT('Summary: ', chars_created, ' characters created, ', chars_skipped, ' characters skipped'));
     SELECT * FROM debug_log;
 
     DROP TEMPORARY TABLE IF EXISTS temp_save_maps;
     DROP TEMPORARY TABLE IF EXISTS temp_last_maps;
+    DROP TEMPORARY TABLE IF EXISTS debug_log;
 END //
 
 CREATE PROCEDURE getGmStats (IN class SMALLINT(6), IN userid VARCHAR(16),
@@ -346,29 +439,71 @@ END //
 CREATE PROCEDURE createGmAccountsAndChars()
 BEGIN
         DECLARE map_name VARCHAR(11) DEFAULT 'gef_fild07';
-        DECLARE karloch_class SMALLINT(6) DEFAULT 9;
-        DECLARE almarc_class SMALLINT(6) DEFAULT 9;
+        DECLARE gm_class SMALLINT(6) DEFAULT 9;
+        DECLARE gm1_user VARCHAR(50);
+        DECLARE gm1_pass VARCHAR(50);
+        DECLARE gm1_char VARCHAR(50);
+        DECLARE gm1_email VARCHAR(100);
+        DECLARE gm2_user VARCHAR(50);
+        DECLARE gm2_pass VARCHAR(50);
+        DECLARE gm2_char VARCHAR(50);
+        DECLARE gm2_email VARCHAR(100);
+        DECLARE gm_sex ENUM('M','F','S');
 
-    CALL getRandomLocation ('gef_fild07', @x, @y);
-        INSERT IGNORE INTO `login` (userid,user_pass,sex,email,group_id,last_ip,character_slots,pincode) VALUES ('Admin','Melon.77','M','cmilanf@hispamsx.org',99,'0.0.0.0',9,'');
-    SELECT account_id,userid,sex INTO @account_id,@userid,@sex FROM `login` WHERE userid='Admin';
-    CALL getGmStats(karloch_class, @userid, @base_level, @zeny, @str, @agi, @vit, @`int`, @dex, @luk, @max_hp, @max_sp,
-                        @hair, @hair_color, @clothes_color, @body, @weapon, @shield, @head_top, @head_mid, @head_bottom, @robe);
+        -- Set defaults from session variables or use hardcoded defaults
+        -- These can be set via: SET @GM1_USER = 'CustomAdmin'; before calling this procedure
+        SET gm1_user = COALESCE(@GM1_USER, 'Admin');
+        SET gm1_pass = COALESCE(@GM1_PASS, 'Melon.77');
+        SET gm1_char = COALESCE(@GM1_CHAR, @GM1_USER, 'Admin');
+        SET gm1_email = COALESCE(@GM1_EMAIL, CONCAT(gm1_user, '@ragnarok.com'));
+
+        SET gm2_user = COALESCE(@GM2_USER, 'Almarc');
+        SET gm2_pass = COALESCE(@GM2_PASS, 'Melon.77');
+        SET gm2_char = COALESCE(@GM2_CHAR, @GM2_USER, 'Almarc');
+        SET gm2_email = COALESCE(@GM2_EMAIL, CONCAT(gm2_user, '@ragnarok.com'));
+
+        SET gm_sex = COALESCE(@GM_SEX, 'M');
+
+        -- Create first GM account
+        CALL getRandomLocation ('gef_fild07', @x, @y);
+        INSERT IGNORE INTO `login` (userid,user_pass,sex,email,group_id,last_ip,character_slots,pincode)
+            VALUES (gm1_user, gm1_pass, gm_sex, gm1_email, 99, '0.0.0.0', 9, '');
+
+        -- Check if account was created or already exists
+        IF ROW_COUNT() > 0 THEN
+            SELECT CONCAT('Created GM account: ', gm1_user) AS status;
+        ELSE
+            SELECT CONCAT('GM account already exists: ', gm1_user) AS status;
+        END IF;
+
+        SELECT account_id, userid, sex INTO @account_id, @userid, @sex FROM `login` WHERE userid = gm1_user;
+        CALL getGmStats(gm_class, @userid, @base_level, @zeny, @str, @agi, @vit, @`int`, @dex, @luk, @max_hp, @max_sp,
+                            @hair, @hair_color, @clothes_color, @body, @weapon, @shield, @head_top, @head_mid, @head_bottom, @robe);
         INSERT IGNORE INTO `char` (account_id, char_num, `name`, sex, class, base_level, job_level, base_exp, job_exp,
                 zeny, str, agi, vit, `int`, dex, luk, max_hp, hp, max_sp, sp, hair, hair_color, clothes_color, body, weapon,
                 shield, head_top, head_mid, head_bottom, robe, last_map, last_x, last_y, save_map, save_x, save_y)
-                VALUES (@account_id, 1, @userid, @sex, karloch_class, @base_level, 50, 0, 0, @zeny, @str,
+                VALUES (@account_id, 0, gm1_char, @sex, gm_class, @base_level, 50, 0, 0, @zeny, @str,
                 @agi, @vit, @`int`, @dex, @luk, @max_hp, @max_hp, @max_sp, @max_sp, @hair, @hair_color, @clothes_color, 0, 0, 0,
                 0, 0, 0, 0, map_name, @x, @y, map_name, @x, @y);
 
-        INSERT IGNORE INTO `login` (userid,user_pass,sex,email,group_id,last_ip,character_slots,pincode) VALUES ('Almarc','Melon.77','M','alberto.marcosg@outlook.com',99,'0.0.0.0',9,'');
-    SELECT account_id,userid,sex INTO @account_id,@userid,@sex FROM `login` WHERE userid='Almarc';
-    CALL getGmStats(almarc_class, @userid, @base_level, @zeny, @str, @agi, @vit, @`int`, @dex, @luk, @max_hp, @max_sp,
-                        @hair, @hair_color, @clothes_color, @body, @weapon, @shield, @head_top, @head_mid, @head_bottom, @robe);
+        -- Create second GM account
+        INSERT IGNORE INTO `login` (userid,user_pass,sex,email,group_id,last_ip,character_slots,pincode)
+            VALUES (gm2_user, gm2_pass, gm_sex, gm2_email, 99, '0.0.0.0', 9, '');
+
+        -- Check if account was created or already exists
+        IF ROW_COUNT() > 0 THEN
+            SELECT CONCAT('Created GM account: ', gm2_user) AS status;
+        ELSE
+            SELECT CONCAT('GM account already exists: ', gm2_user) AS status;
+        END IF;
+
+        SELECT account_id, userid, sex INTO @account_id, @userid, @sex FROM `login` WHERE userid = gm2_user;
+        CALL getGmStats(gm_class, @userid, @base_level, @zeny, @str, @agi, @vit, @`int`, @dex, @luk, @max_hp, @max_sp,
+                            @hair, @hair_color, @clothes_color, @body, @weapon, @shield, @head_top, @head_mid, @head_bottom, @robe);
         INSERT IGNORE INTO `char` (account_id, char_num, `name`, sex, class, base_level, job_level, base_exp, job_exp,
                 zeny, str, agi, vit, `int`, dex, luk, max_hp, hp, max_sp, sp, hair, hair_color, clothes_color, body, weapon,
                 shield, head_top, head_mid, head_bottom, robe, last_map, last_x, last_y, save_map, save_x, save_y)
-                VALUES (@account_id, 1, @userid, @sex, almarc_class, @base_level, 50, 0, 0, @zeny, @str,
+                VALUES (@account_id, 0, gm2_char, @sex, gm_class, @base_level, 50, 0, 0, @zeny, @str,
                 @agi, @vit, @`int`, @dex, @luk, @max_hp, @max_hp, @max_sp, @max_sp, @hair, @hair_color, @clothes_color, 0, 0, 0,
                 0, 0, 0, 0, map_name, @x, @y, map_name, @x, @y);
 END //
@@ -521,23 +656,23 @@ BEGIN
                 END IF;
                         ELSE BEGIN END;
                 END CASE;
-        IF acc1 > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,acc1,1,128,1); END IF;
-        IF acc2 > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,acc2,1,8,1); END IF;
-        IF shoes > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,shoes,1,64,1); END IF;
-        IF robe > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,robe,1,4,1); END IF;
-        IF body > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,body,1,16,1); END IF;
+        IF acc1 > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,acc1,1,128,1); END IF;
+        IF acc2 > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,acc2,1,8,1); END IF;
+        IF shoes > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,shoes,1,64,1); END IF;
+        IF robe > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,robe,1,4,1); END IF;
+        IF body > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,body,1,16,1); END IF;
         IF rhand = lhand THEN
-                        INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,rhand,1,34,1);
+                        INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,rhand,1,34,1);
                 ELSE
-                        IF rhand > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,rhand,1,2,1); END IF;
-                        IF lhand > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,lhand,1,32,1); END IF;
+                        IF rhand > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,rhand,1,2,1); END IF;
+                        IF lhand > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,lhand,1,32,1); END IF;
                 END IF;
-        IF head1 > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,head1,1,256,1); END IF;
-        IF head2 > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,head2,1,512,1); END IF;
-        IF head3 > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,head3,1,2,1); END IF;
-        IF arrow > 0 THEN INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,arrow,800,32768,1); END IF;
-        INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,717,150,0,1);
-                INSERT INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,12815,50,0,1);
+        IF head1 > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,head1,1,256,1); END IF;
+        IF head2 > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,head2,1,512,1); END IF;
+        IF head3 > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,head3,1,2,1); END IF;
+        IF arrow > 0 THEN INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,arrow,800,32768,1); END IF;
+        INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,717,150,0,1);
+                INSERT IGNORE INTO inventory (char_id,nameid,amount,equip,identify) VALUES (cur_char_id,12815,50,0,1);
         END LOOP charPopulateItemsLoop;
 END //
 
@@ -561,401 +696,401 @@ BEGIN
             LEAVE charPopulateSkillsLoop;
                 END IF;
         -- NOVICE and every class
-        INSERT INTO skill (`char_id`, `id`, `lv`) VALUES (cur_char_id,1,9);
+        INSERT IGNORE INTO skill (`char_id`, `id`, `lv`) VALUES (cur_char_id,1,9);
                 CASE
                         -- SUPER NOVICE
             WHEN (cur_class = 23) THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,2,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,3,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,4,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,5,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,6,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,7,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,8,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,9,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,10,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,11,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,12,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,13,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,14,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,15,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,16,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,17,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,18,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,19,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,20,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,21,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,22,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,23,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,24,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,25,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,26,2,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,27,4,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,28,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,29,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,30,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,31,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,32,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,33,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,34,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,35,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,48,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,49,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,50,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,51,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,52,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,53,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,2,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,3,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,4,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,5,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,6,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,7,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,8,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,9,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,10,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,11,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,12,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,13,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,14,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,15,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,16,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,17,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,18,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,19,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,20,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,21,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,22,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,23,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,24,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,25,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,26,2,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,27,4,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,28,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,29,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,30,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,31,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,32,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,33,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,34,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,35,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,48,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,49,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,50,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,51,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,52,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,53,1,0);
                         -- SWORDMAN
             WHEN (cur_class = 1 OR cur_class = 7 OR cur_class = 14) THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,2,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,3,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,4,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,5,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,6,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,7,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,8,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,2,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,3,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,4,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,5,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,6,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,7,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,8,10,0);
                         -- MAGE
             WHEN (cur_class = 2 OR cur_class = 9 OR cur_class = 16) THEN
-                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,9,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,10,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,11,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,12,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,13,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,14,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,15,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,16,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,17,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,18,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,19,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,20,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,21,10,0);
+                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,9,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,10,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,11,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,12,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,13,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,14,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,15,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,16,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,17,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,18,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,19,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,20,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,21,10,0);
                         -- ACOLYTE
             WHEN (cur_class = 4 OR cur_class = 8 OR cur_class = 15) THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,22,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,23,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,24,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,25,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,26,2,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,27,4,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,28,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,29,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,30,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,31,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,32,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,33,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,34,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,35,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,22,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,23,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,24,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,25,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,26,2,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,27,4,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,28,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,29,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,30,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,31,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,32,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,33,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,34,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,35,1,0);
                         -- MERCHANT
             WHEN (cur_class = 5 OR cur_class = 10 OR cur_class = 18) THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,36,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,37,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,38,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,39,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,40,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,41,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,42,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,36,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,37,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,38,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,39,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,40,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,41,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,42,10,0);
                         -- ARCHER
             WHEN 3 OR (cur_class = 11 OR cur_class = 19 OR cur_class = 20) THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,43,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,44,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,45,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,46,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,47,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,43,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,44,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,45,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,46,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,47,10,0);
                         -- THIEF
             WHEN (cur_class = 6 OR cur_class = 12 OR cur_class = 17) THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,48,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,49,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,50,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,51,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,52,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,53,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,48,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,49,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,50,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,51,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,52,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,53,1,0);
                         ELSE BEGIN END;
                 END CASE;
         CASE
                         -- KNIGHT
             WHEN cur_class = 7 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,55,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,56,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,57,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,58,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,59,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,60,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,61,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,62,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,63,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,64,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,55,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,56,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,57,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,58,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,59,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,60,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,61,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,62,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,63,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,64,5,0);
                         -- PRIEST
             WHEN cur_class = 8 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,54,4,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,65,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,66,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,67,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,68,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,69,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,70,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,71,4,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,72,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,73,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,74,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,75,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,76,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,77,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,78,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,79,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,54,4,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,65,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,66,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,67,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,68,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,69,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,70,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,71,4,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,72,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,73,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,74,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,75,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,76,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,77,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,78,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,79,10,0);
                         -- WIZARD
             WHEN cur_class = 9 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,80,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,81,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,83,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,84,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,85,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,86,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,87,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,88,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,89,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,90,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,91,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,92,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,93,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,80,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,81,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,83,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,84,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,85,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,86,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,87,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,88,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,89,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,90,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,91,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,92,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,93,1,0);
                         -- BLACKSMITH
             WHEN cur_class = 10 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,94,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,95,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,96,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,97,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,98,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,99,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,100,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,101,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,102,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,103,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,104,3,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,105,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,106,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,107,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,108,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,109,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,110,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,111,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,112,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,113,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,114,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,94,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,95,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,96,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,97,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,98,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,99,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,100,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,101,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,102,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,103,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,104,3,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,105,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,106,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,107,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,108,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,109,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,110,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,111,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,112,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,113,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,114,5,0);
                         -- HUNTER
             WHEN cur_class = 11 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,115,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,116,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,117,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,118,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,119,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,120,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,121,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,122,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,123,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,124,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,125,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,126,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,127,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,128,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,129,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,130,4,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,131,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,115,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,116,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,117,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,118,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,119,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,120,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,121,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,122,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,123,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,124,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,125,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,126,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,127,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,128,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,129,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,130,4,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,131,5,0);
                         -- ASSASIN
             WHEN cur_class = 12 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,132,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,133,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,134,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,135,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,136,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,137,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,138,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,139,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,140,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,141,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,132,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,133,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,134,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,135,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,136,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,137,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,138,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,139,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,140,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,141,10,0);
                         -- ROGUE
             WHEN cur_class = 17 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,2,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,124,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,210,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,211,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,212,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,213,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,214,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,215,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,216,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,217,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,218,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,219,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,220,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,221,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,222,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,223,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,224,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,225,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,2,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,124,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,210,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,211,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,212,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,213,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,214,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,215,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,216,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,217,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,218,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,219,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,220,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,221,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,222,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,223,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,224,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,225,10,0);
                         -- ALCHEMIST
                         WHEN cur_class = 18 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,226,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,227,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,228,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,229,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,230,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,231,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,232,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,233,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,234,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,235,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,236,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,237,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,226,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,227,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,228,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,229,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,230,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,231,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,232,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,233,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,234,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,235,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,236,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,237,5,0);
                         -- CRUSHADER
             WHEN cur_class = 14 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,22,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,23,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,28,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,35,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,55,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,63,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,64,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,248,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,249,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,250,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,251,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,252,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,253,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,254,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,255,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,256,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,257,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,258,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,22,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,23,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,28,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,35,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,55,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,63,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,64,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,248,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,249,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,250,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,251,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,252,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,253,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,254,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,255,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,256,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,257,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,258,10,0);
                         -- MONK
             WHEN cur_class = 15 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,259,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,260,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,261,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,262,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,263,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,264,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,265,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,266,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,267,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,268,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,269,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,270,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,271,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,272,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,273,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,259,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,260,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,261,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,262,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,263,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,264,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,265,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,266,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,267,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,268,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,269,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,270,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,271,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,272,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,273,5,0);
                         -- SAGE
             WHEN cur_class = 16 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,90,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,91,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,93,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,274,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,275,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,276,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,277,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,278,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,279,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,280,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,281,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,282,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,283,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,284,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,285,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,286,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,287,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,288,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,289,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,290,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,90,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,91,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,93,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,274,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,275,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,276,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,277,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,278,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,279,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,280,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,281,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,282,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,283,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,284,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,285,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,286,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,287,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,288,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,289,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,290,10,0);
                         -- DANCER OR BARD
                         WHEN (cur_class = 19 OR cur_class = 20) THEN
                 IF cur_class = 19 THEN
                                         -- BARD
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,304,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,305,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,306,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,307,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,308,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,309,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,310,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,311,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,312,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,313,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,315,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,316,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,317,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,318,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,319,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,320,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,321,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,322,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,304,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,305,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,306,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,307,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,308,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,309,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,310,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,311,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,312,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,313,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,315,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,316,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,317,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,318,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,319,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,320,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,321,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,322,10,0);
                                 ELSEIF cur_class = 20 THEN
                                         -- DANCER
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,304,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,305,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,306,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,307,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,308,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,309,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,310,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,311,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,312,1,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,313,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,323,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,324,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,325,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,326,5,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,327,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,328,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,329,10,0);
-                                        INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,330,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,304,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,305,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,306,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,307,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,308,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,309,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,310,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,311,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,312,1,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,313,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,323,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,324,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,325,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,326,5,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,327,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,328,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,329,10,0);
+                                        INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,330,10,0);
                                 END IF;
                         -- GUNSLINGER
                         WHEN cur_class = 24 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,500,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,501,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,502,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,503,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,504,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,505,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,506,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,507,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,508,1,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,509,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,510,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,511,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,512,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,513,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,514,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,515,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,516,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,517,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,518,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,519,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,520,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,521,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,500,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,501,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,502,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,503,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,504,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,505,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,506,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,507,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,508,1,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,509,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,510,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,511,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,512,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,513,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,514,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,515,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,516,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,517,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,518,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,519,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,520,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,521,10,0);
                         -- NINJA
             WHEN cur_class = 25 THEN
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,522,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,523,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,524,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,525,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,526,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,527,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,528,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,529,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,530,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,531,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,532,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,533,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,534,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,535,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,536,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,537,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,538,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,539,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,540,10,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,541,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,542,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,543,5,0);
-                                INSERT INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,544,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,522,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,523,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,524,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,525,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,526,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,527,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,528,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,529,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,530,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,531,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,532,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,533,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,534,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,535,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,536,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,537,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,538,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,539,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,540,10,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,541,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,542,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,543,5,0);
+                                INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,544,10,0);
                         ELSE BEGIN END;
                 END CASE;
         END LOOP charPopulateSkillsLoop;
@@ -1006,8 +1141,61 @@ BEGIN
     -- Clean up the temporary table
     DROP TEMPORARY TABLE IF EXISTS temp_bot_accounts;
 
-    -- Add a dummy SELECT statement to avoid returning a result set
-    SELECT 1;
+    SELECT 'Bot accounts cleaned' AS status;
+END //
+
+CREATE PROCEDURE cleanGmAccounts()
+BEGIN
+    DECLARE gm1_user VARCHAR(50);
+    DECLARE gm2_user VARCHAR(50);
+
+    -- Set GM usernames from session variables or defaults
+    SET gm1_user = COALESCE(@GM1_USER, 'Admin');
+    SET gm2_user = COALESCE(@GM2_USER, 'Almarc');
+
+    -- Get account IDs for GM accounts
+    CREATE TEMPORARY TABLE temp_gm_accounts AS
+    SELECT account_id
+    FROM `login`
+    WHERE userid IN (gm1_user, gm2_user);
+
+    -- Delete inventory items for GM characters
+    DELETE FROM inventory
+    WHERE char_id IN (
+        SELECT char_id
+        FROM `char`
+        WHERE account_id IN (
+            SELECT account_id
+            FROM temp_gm_accounts
+        )
+    );
+
+    -- Delete skills for GM characters
+    DELETE FROM skill
+    WHERE char_id IN (
+        SELECT char_id
+        FROM `char`
+        WHERE account_id IN (
+            SELECT account_id
+            FROM temp_gm_accounts
+        )
+    );
+
+    -- Delete GM characters
+    DELETE FROM `char`
+    WHERE account_id IN (
+        SELECT account_id
+        FROM temp_gm_accounts
+    );
+
+    -- Delete GM accounts
+    DELETE FROM `login`
+    WHERE userid IN (gm1_user, gm2_user);
+
+    -- Clean up the temporary table
+    DROP TEMPORARY TABLE IF EXISTS temp_gm_accounts;
+
+    SELECT CONCAT('GM accounts cleaned: ', gm1_user, ', ', gm2_user) AS status;
 END //
 
 CREATE PROCEDURE createCustomCharOnlineLockTable()
@@ -1026,14 +1214,24 @@ END //
 
 -- ###### ACCOUNTS ######
 
-CALL cleanDatabase();
+-- FORCE MODE: Uncomment these lines to delete and recreate ALL accounts
+-- WARNING: This will delete existing accounts and all associated data!
+-- CALL cleanDatabase();        -- Deletes all botijo accounts
+-- CALL cleanGmAccounts();       -- Deletes Admin and Almarc accounts
 
+-- Create GM accounts (uses INSERT IGNORE - won't overwrite existing accounts)
+CALL createGmAccountsAndChars();
+
+-- Create bot accounts (uses INSERT IGNORE - won't overwrite existing accounts)
 CALL createBotAccounts(300);
 
+-- Create characters for bot accounts (uses INSERT IGNORE - won't overwrite existing characters)
 CALL createBotChars('botijo');
 
+-- Create items for characters (uses INSERT IGNORE - won't duplicate items)
 CALL createItemsForChars('botijo');
 
+-- Create skills for characters (uses INSERT IGNORE - won't duplicate skills)
 CALL createSkillsForChars('botijo');
 
 CALL createCustomCharOnlineLockTable();
