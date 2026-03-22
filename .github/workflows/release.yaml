@@ -33,6 +33,7 @@ on:
           - '20180418'
           - '20190605'
           - '20200401'
+          - '20151104'
       platforms:
         description: 'Platforms to build for'
         required: true
@@ -64,7 +65,7 @@ jobs:
             MATRIX='{"include":[{"rathena_commit":"${{ github.event.inputs.rathena_commit }}","packet_version":"${{ github.event.inputs.packet_version }}","server_mode":"${{ github.event.inputs.server_mode }}","renewal":"'"${RENEWAL}"'","platforms":"${{ github.event.inputs.platforms }}"}]}'
           else
             # For scheduled/auto builds, use predefined matrix
-            MATRIX='{"include":[{"rathena_commit":"master","packet_version":"20200401","server_mode":"classic","renewal":"false","platforms":"linux/amd64"},{"rathena_commit":"master","packet_version":"20200401","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"}]}'
+            MATRIX='{"include":[{"rathena_commit":"master","packet_version":"20200401","server_mode":"classic","renewal":"false","platforms":"linux/amd64"},{"rathena_commit":"master","packet_version":"20200401","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"},{"rathena_commit":"master","packet_version":"20151104","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"}]}'
           fi
 
           echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
