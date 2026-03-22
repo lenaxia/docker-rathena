@@ -16,6 +16,7 @@ jobs:
           - {server_mode: classic, renewal: false, packetver: 20200401, rathena_commit: master}
           - {server_mode: renewal, renewal: true, packetver: 20200401, rathena_commit: master}
           - {server_mode: classic, renewal: false, packetver: 20190605, rathena_commit: master}
+          - {server_mode: renewal, renewal: true, packetver: 20151104, rathena_commit: master}
         platform: [linux/amd64]
 
     steps:

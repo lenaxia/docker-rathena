@@ -15,7 +15,7 @@
 -- @GM1_CHAR   - First GM character name (default: same as @GM1_USER)
 -- @GM1_EMAIL  - First GM email (default: username@ragnarok.com)
 --
--- @GM2_USER   - Second GM account username (default: 'Almarc')
+-- @GM2_USER   - Second GM account username (default: 'Admin2')
 -- @GM2_PASS   - Second GM account password (default: 'Melon.77')
 -- @GM2_CHAR   - Second GM character name (default: same as @GM2_USER)
 -- @GM2_EMAIL  - Second GM email (default: username@ragnarok.com)
@@ -24,7 +24,7 @@
 --
 -- ###### USAGE EXAMPLES ######
 --
--- Example 1: Use default GM accounts (Admin and Almarc)
+-- Example 1: Use default GM accounts (Admin and Admin2)
 --   mysql -u root -p database_name < accountsandchars.sql
 --
 -- Example 2: Customize GM accounts from shell
@@ -41,7 +41,7 @@
 --   mysql -u root -p database_name <<EOF
 --     SET @GM1_USER = '${GM1_USER:-Admin}';
 --     SET @GM1_PASS = '${GM1_PASS:-Melon.77}';
---     SET @GM2_USER = '${GM2_USER:-Almarc}';
+--     SET @GM2_USER = '${GM2_USER:-Admin2}';
 --     SET @GM2_PASS = '${GM2_PASS:-Melon.77}';
 --     SOURCE accountsandchars.sql;
 --   EOF
@@ -403,37 +403,20 @@ CREATE PROCEDURE getGmStats (IN class SMALLINT(6), IN userid VARCHAR(16),
     OUT shield SMALLINT(6) UNSIGNED, OUT head_top SMALLINT(6) UNSIGNED, OUT head_mid SMALLINT(6) UNSIGNED,
     OUT head_bottom SMALLINT(6) UNSIGNED, OUT robe SMALLINT(6) UNSIGNED)
 BEGIN
-        CASE
-                WHEN userid = 'Admin' THEN
-                        SET base_level = 98;
-                        SET zeny = 1000000-500;
-                        SET hair = 11;
-                        SET hair_color = 7;
-                        SET clothes_color = 2;
-                        SET str = 999;
-            SET agi = 999;
-            SET vit = 999;
-            SET `int` = 999;
-            SET dex = 999;
-            SET luk = 999;
-            SET max_hp = 99999;
-            SET max_sp = 99999;
-                WHEN userid = 'Almarc' THEN
-                SET base_level = 98;
-                        SET zeny = 1000000;
-                        SET hair = FLOOR(RAND() * 17);
-                        SET hair_color = FLOOR(RAND() * 8);
-                        SET clothes_color = FLOOR(RAND() * 4);
-                        SET str = 999;
-            SET agi = 999;
-            SET vit = 999;
-            SET `int` = 999;
-            SET dex = 999;
-            SET luk = 999;
-            SET max_hp = 99999;
-            SET max_sp = 99999;
-                ELSE BEGIN END;
-        END CASE;
+        -- All GM accounts get max stats regardless of username
+        SET base_level = 98;
+        SET zeny = 1000000;
+        SET hair = FLOOR(RAND() * 17);
+        SET hair_color = FLOOR(RAND() * 8);
+        SET clothes_color = FLOOR(RAND() * 4);
+        SET str = 999;
+        SET agi = 999;
+        SET vit = 999;
+        SET `int` = 999;
+        SET dex = 999;
+        SET luk = 999;
+        SET max_hp = 99999;
+        SET max_sp = 99999;
 END //
 
 CREATE PROCEDURE createGmAccountsAndChars()
@@ -457,9 +440,9 @@ BEGIN
         SET gm1_char = COALESCE(@GM1_CHAR, @GM1_USER, 'Admin');
         SET gm1_email = COALESCE(@GM1_EMAIL, CONCAT(gm1_user, '@ragnarok.com'));
 
-        SET gm2_user = COALESCE(@GM2_USER, 'Almarc');
+        SET gm2_user = COALESCE(@GM2_USER, 'Admin2');
         SET gm2_pass = COALESCE(@GM2_PASS, 'Melon.77');
-        SET gm2_char = COALESCE(@GM2_CHAR, @GM2_USER, 'Almarc');
+        SET gm2_char = COALESCE(@GM2_CHAR, @GM2_USER, 'Admin2');
         SET gm2_email = COALESCE(@GM2_EMAIL, CONCAT(gm2_user, '@ragnarok.com'));
 
         SET gm_sex = COALESCE(@GM_SEX, 'M');
@@ -790,7 +773,7 @@ BEGIN
                                 INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,41,10,0);
                                 INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,42,10,0);
                         -- ARCHER
-            WHEN 3 OR (cur_class = 11 OR cur_class = 19 OR cur_class = 20) THEN
+            WHEN (cur_class = 3 OR cur_class = 11 OR cur_class = 19 OR cur_class = 20) THEN
                                 INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,43,10,0);
                                 INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,44,10,0);
                                 INSERT IGNORE INTO `skill` (`char_id`,`id`,`lv`,`flag`) VALUES (cur_char_id,45,10,0);
@@ -1151,7 +1134,7 @@ BEGIN
 
     -- Set GM usernames from session variables or defaults
     SET gm1_user = COALESCE(@GM1_USER, 'Admin');
-    SET gm2_user = COALESCE(@GM2_USER, 'Almarc');
+    SET gm2_user = COALESCE(@GM2_USER, 'Admin2');
 
     -- Get account IDs for GM accounts
     CREATE TEMPORARY TABLE temp_gm_accounts AS
@@ -1217,7 +1200,7 @@ END //
 -- FORCE MODE: Uncomment these lines to delete and recreate ALL accounts
 -- WARNING: This will delete existing accounts and all associated data!
 -- CALL cleanDatabase();        -- Deletes all botijo accounts
--- CALL cleanGmAccounts();       -- Deletes Admin and Almarc accounts
+-- CALL cleanGmAccounts();       -- Deletes Admin and Admin2 accounts
 
 -- Create GM accounts (uses INSERT IGNORE - won't overwrite existing accounts)
 CALL createGmAccountsAndChars();
@@ -1236,9 +1219,9 @@ CALL createSkillsForChars('botijo');
 
 CALL createCustomCharOnlineLockTable();
 
-SET GLOBAL max_connections = 2048;
-
-SET GLOBAL event_scheduler = ON;
+-- Note: SET GLOBAL max_connections and event_scheduler require SYSTEM_VARIABLES_ADMIN
+-- privileges not available to the standard rathena user. Configure these on your
+-- MySQL server directly if needed (e.g., in my.cnf or via a privileged init script).
 
 CREATE EVENT online_status_sync
 ON SCHEDULE EVERY 5 MINUTE

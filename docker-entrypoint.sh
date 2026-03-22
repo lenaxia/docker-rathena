@@ -8,8 +8,7 @@ echo "  /_/  /_/  |_\__/_/ /_/\___/_/ /_/\__,_/"
 echo ""
 echo "http://rathena.org/board/"
 echo ""
-DATE=$(date '+%Y-%m-%d %H:%M:%S')
-echo "Initalizing Docker container..."
+echo "Initializing Docker container..."
 
 check_database_exist () {
     RESULT=`mysqlshow --user=${MYSQL_USERNAME} --password=${MYSQL_PASSWORD} --host=${MYSQL_HOST} --port=${MYSQL_PORT} ${MYSQL_DATABASE} | grep -v Wildcard | grep -o ${MYSQL_DATABASE}`
@@ -40,6 +39,7 @@ setup_init () {
 setup_mysql_config () {
     printf "###### MySQL setup ######\n"
     if [ -z "${MYSQL_HOST}" ]; then printf "Missing MYSQL_HOST environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_PORT}" ]; then MYSQL_PORT=3306; printf "MYSQL_PORT not set, defaulting to 3306.\n"; fi
     if [ -z "${MYSQL_DATABASE}" ]; then printf "Missing MYSQL_DATABASE environment variable. Unable to continue.\n"; exit 1; fi
     if [ -z "${MYSQL_USERNAME}" ]; then printf "Missing MYSQL_USERNAME environment variable. Unable to continue.\n"; exit 1; fi
     if [ -z "${MYSQL_PASSWORD}" ]; then printf "Missing MYSQL_PASSWORD environment variable. Unable to continue.\n"; exit 1; fi
@@ -50,7 +50,6 @@ setup_mysql_config () {
 
     # Set server_type based on RENEWAL runtime flag (case-insensitive)
     # 0 = Pre-Renewal/Classic, 1 = Renewal
-    RENEWAL_LOWER=$(echo "${RENEWAL}" | tr '[:upper:]' '[:lower:]')
     if [ "${RENEWAL_LOWER}" = "true" ] || [ "${RENEWAL_LOWER}" = "1" ] || [ "${RENEWAL_LOWER}" = "yes" ]; then
         printf "Setting server_type to Renewal (1)\n"
         sed -i "s/^server_type:.*/server_type: 1/" /opt/rAthena/conf/inter_athena.conf
@@ -255,13 +254,17 @@ setup_config () {
 }
 
 enable_custom_npc () {
-    printf "npc: npc/custom/gab_npc.txt\n" >> /opt/rAthena/npc/scripts_custom.conf
+    if ! grep -q "npc/custom/gab_npc.txt" /opt/rAthena/npc/scripts_custom.conf; then
+        printf "npc: npc/custom/gab_npc.txt\n" >> /opt/rAthena/npc/scripts_custom.conf
+    fi
 }
 
 #PUBLICIP=$(dig +short myip.opendns.com @resolver1.opendns.com)
 
+RENEWAL_LOWER=$(echo "${RENEWAL}" | tr '[:upper:]' '[:lower:]')
+
 cd /opt/rAthena
-if ! [ -z ${DOWNLOAD_OVERRIDE_CONF_URL} ]; then 
+if ! [ -z "${DOWNLOAD_OVERRIDE_CONF_URL}" ]; then 
     wget -q ${DOWNLOAD_OVERRIDE_CONF_URL} -O /tmp/rathena_import_conf.zip
     if [ $? -eq 0 ]; then
         unzip /tmp/rathena_import_conf.zip -d /opt/rAthena/conf/import/
@@ -275,7 +278,10 @@ else
     setup_init
 fi
 
-sed -i '39,54s/^/\/\//' /opt/rAthena/npc/re/warps/cities/izlude.txt
-sed -i '94,113s/^/\/\//' /opt/rAthena/npc/re/warps/fields/prontera_fild.txt
+# Comment out Izlude re-warp NPCs and Prontera field warp (renewal files only)
+if [ "${RENEWAL_LOWER}" = "true" ] || [ "${RENEWAL_LOWER}" = "1" ] || [ "${RENEWAL_LOWER}" = "yes" ]; then
+    sed -i '39,54s/^/\/\//' /opt/rAthena/npc/re/warps/cities/izlude.txt
+    sed -i '94,113s/^/\/\//' /opt/rAthena/npc/re/warps/fields/prontera_fild.txt
+fi
 
 exec "$@"
