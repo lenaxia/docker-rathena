@@ -80,13 +80,19 @@ RUN git clone https://github.com/rathena/rathena.git /opt/rAthena && \
 #    arrives before session is fully initialized → SIGSEGV)
 # 2. status_calc_pc_sub: skip recalc if session not initialized (base_status.max_hp == 0)
 # 3. pc_setparam SP_PCDIECOUNTER: guard status_calc_pc call (sd->bonus.hp must be populated)
+#
+# Each patch is verified with grep after application — the build fails if any
+# upstream refactoring causes a pattern to no longer match.
 RUN cd /opt/rAthena && \
     sed -i '/map_session_data \*sd = map_id2sd(bl->id);/{n;s/return 0;/if( sd == nullptr ){ ShowError("status_get_hpbonus: sd is null for bl->id=%d\\n", bl->id); return 0; }/}' \
         src/map/status.cpp && \
+    grep -q 'sd is null' src/map/status.cpp || { echo 'FATAL: patch 1 (status_get_hpbonus null-check) did not apply — upstream source has changed'; exit 1; } && \
     sed -i '/if (++calculating > 10) \/\/ Too many recursive calls!/{n;s/return -1;/return -1; if( !(opt\&SCO_FIRST) \&\& sd->base_status.max_hp == 0 ){ --calculating; return -1; }/}' \
         src/map/status.cpp && \
+    grep -q 'base_status.max_hp == 0' src/map/status.cpp || { echo 'FATAL: patch 2 (status_calc_pc_sub init guard) did not apply — upstream source has changed'; exit 1; } && \
     sed -i 's/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_UPPERMASK) == MAPID_SUPER_NOVICE)/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_UPPERMASK) == MAPID_SUPER_NOVICE \&\& sd->bonus.hp != 0)/' \
-        src/map/pc.cpp
+        src/map/pc.cpp && \
+    grep -q 'sd->bonus.hp != 0' src/map/pc.cpp || { echo 'FATAL: patch 3 (pc_setparam PCDIECOUNTER guard) did not apply — upstream source has changed'; exit 1; }
 
 # Copy essential SQL files from the cloned repository (YAML mode - minimal SQL required)
 RUN mkdir -p /opt/sql && \
