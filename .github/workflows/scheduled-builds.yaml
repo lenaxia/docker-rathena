@@ -133,7 +133,7 @@ jobs:
           '
 
   update-commit-manifest:
-    needs: build-commits
+    needs: [fetch-commits, build-commits]
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     permissions:

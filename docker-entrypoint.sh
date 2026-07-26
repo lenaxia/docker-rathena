@@ -8,12 +8,21 @@ echo "  /_/  /_/  |_\__/_/ /_/\___/_/ /_/\__,_/"
 echo ""
 echo "http://rathena.org/board/"
 echo ""
-DATE=$(date '+%Y-%m-%d %H:%M:%S')
-echo "Initalizing Docker container..."
+echo "Initializing Docker container..."
 
 check_database_exist () {
     RESULT=`mysqlshow --user=${MYSQL_USERNAME} --password=${MYSQL_PASSWORD} --host=${MYSQL_HOST} --port=${MYSQL_PORT} ${MYSQL_DATABASE} | grep -v Wildcard | grep -o ${MYSQL_DATABASE}`
     if [ "$RESULT" = "${MYSQL_DATABASE}" ]; then
+        return 0;
+    else
+        return 1;
+    fi
+}
+
+check_tables_exist () {
+    # Check if essential tables exist in the database
+    TABLE_COUNT=`mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D ${MYSQL_DATABASE} -sse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${MYSQL_DATABASE}' AND table_name IN ('login', 'char', 'storage', 'party', 'guild');"`
+    if [ "${TABLE_COUNT}" -ge 5 ]; then
         return 0;
     else
         return 1;
@@ -30,6 +39,7 @@ setup_init () {
 setup_mysql_config () {
     printf "###### MySQL setup ######\n"
     if [ -z "${MYSQL_HOST}" ]; then printf "Missing MYSQL_HOST environment variable. Unable to continue.\n"; exit 1; fi
+    if [ -z "${MYSQL_PORT}" ]; then MYSQL_PORT=3306; printf "MYSQL_PORT not set, defaulting to 3306.\n"; fi
     if [ -z "${MYSQL_DATABASE}" ]; then printf "Missing MYSQL_DATABASE environment variable. Unable to continue.\n"; exit 1; fi
     if [ -z "${MYSQL_USERNAME}" ]; then printf "Missing MYSQL_USERNAME environment variable. Unable to continue.\n"; exit 1; fi
     if [ -z "${MYSQL_PASSWORD}" ]; then printf "Missing MYSQL_PASSWORD environment variable. Unable to continue.\n"; exit 1; fi
@@ -40,7 +50,6 @@ setup_mysql_config () {
 
     # Set server_type based on RENEWAL runtime flag (case-insensitive)
     # 0 = Pre-Renewal/Classic, 1 = Renewal
-    RENEWAL_LOWER=$(echo "${RENEWAL}" | tr '[:upper:]' '[:lower:]')
     if [ "${RENEWAL_LOWER}" = "true" ] || [ "${RENEWAL_LOWER}" = "1" ] || [ "${RENEWAL_LOWER}" = "yes" ]; then
         printf "Setting server_type to Renewal (1)\n"
         sed -i "s/^server_type:.*/server_type: 1/" /opt/rAthena/conf/inter_athena.conf
@@ -100,7 +109,10 @@ setup_mysql_config () {
     if ! check_database_exist; then
         printf "Creating database...\n"
         mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -e "CREATE DATABASE ${MYSQL_DATABASE};"
+    fi
 
+    printf "Checking if tables exist...\n"
+    if ! check_tables_exist; then
         printf "Importing essential SQL files (YAML mode - game data loaded from YAML)...\n"
         # Import all SQL files from /opt/sql directory (only essential files for YAML mode)
         for sql_file in /opt/sql/*.sql; do
@@ -112,11 +124,71 @@ setup_mysql_config () {
 
         printf "Updating interserver credentials...\n"
         mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} ${MYSQL_DATABASE} -e "UPDATE login SET userid = \"${SET_INTERSRV_USERID}\", user_pass = \"${SET_INTERSRV_PASSWD}\" WHERE account_id = 1;"
+    else
+        printf "Tables already exist, skipping SQL import.\n"
     fi
 
     if ! [ -z "${MYSQL_ACCOUNTSANDCHARS}" ]; then
         printf "Populating accounts and characters"
-        mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} < /root/accountsandchars.sql
+
+        # Prepare GM account variables from environment (with defaults)
+        GM1_USER="${GM1_USER:-Admin}"
+        GM1_PASS="${GM1_PASS:-Melon.77}"
+        GM1_CHAR="${GM1_CHAR:-${GM1_USER}}"
+        GM1_EMAIL="${GM1_EMAIL:-${GM1_USER}@ragnarok.com}"
+        GM2_USER="${GM2_USER:-Almarc}"
+        GM2_PASS="${GM2_PASS:-Melon.77}"
+        GM2_CHAR="${GM2_CHAR:-${GM2_USER}}"
+        GM2_EMAIL="${GM2_EMAIL:-${GM2_USER}@ragnarok.com}"
+        GM_SEX="${GM_SEX:-M}"
+
+        # Build the SQL variable setup commands
+        SQL_VARS="SET @GM1_USER = '${GM1_USER}'; \
+                  SET @GM1_PASS = '${GM1_PASS}'; \
+                  SET @GM1_CHAR = '${GM1_CHAR}'; \
+                  SET @GM1_EMAIL = '${GM1_EMAIL}'; \
+                  SET @GM2_USER = '${GM2_USER}'; \
+                  SET @GM2_PASS = '${GM2_PASS}'; \
+                  SET @GM2_CHAR = '${GM2_CHAR}'; \
+                  SET @GM2_EMAIL = '${GM2_EMAIL}'; \
+                  SET @GM_SEX = '${GM_SEX}';"
+
+        printf "\n  Using GM accounts: ${GM1_USER} (${GM1_CHAR}), ${GM2_USER} (${GM2_CHAR})\n"
+
+        # First attempt: Try executing the script normally
+        if { echo "${SQL_VARS}"; cat /root/accountsandchars.sql; } | mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} 2>/tmp/mysql_error.log; then
+            printf " - Success!\n"
+        else
+            # Check if the error is related to function creation with binary logging
+            if grep -q "log_bin_trust_function_creators\|DETERMINISTIC\|NO SQL\|READS SQL DATA" /tmp/mysql_error.log 2>/dev/null; then
+                printf " - Function creation blocked by binary logging, trying alternative approach...\n"
+
+                # Second attempt: Try to enable function creators for this session and retry
+                if mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} -e "SET SESSION sql_log_bin = 0;" 2>/dev/null && \
+                   { echo "${SQL_VARS}"; cat /root/accountsandchars.sql; } | mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} 2>/dev/null; then
+                    printf " - Success with alternative approach!\n"
+                else
+                    printf " - Alternative approach failed, trying root user if available...\n"
+
+                    # Third attempt: Try with root user if we have credentials
+                    if ! [ -z "${MYSQL_ROOT_PASSWORD}" ] && \
+                       mysql -uroot -p${MYSQL_ROOT_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} -e "SET GLOBAL log_bin_trust_function_creators = 1;" 2>/dev/null && \
+                       { echo "${SQL_VARS}"; cat /root/accountsandchars.sql; } | mysql -u${MYSQL_USERNAME} -p${MYSQL_PASSWORD} -h ${MYSQL_HOST} -P ${MYSQL_PORT} -D${MYSQL_DATABASE} 2>/dev/null; then
+                        printf " - Success with root privileges!\n"
+                    else
+                        printf " - All attempts failed. Account creation skipped.\n"
+                        printf "   You may need to manually set 'log_bin_trust_function_creators=1' on your MySQL server\n"
+                        printf "   or run the account creation script manually after startup.\n"
+                    fi
+                fi
+            else
+                printf " - Failed with unknown error:\n"
+                cat /tmp/mysql_error.log 2>/dev/null || printf "   Could not read error details\n"
+            fi
+        fi
+
+        # Cleanup temporary error log
+        rm -f /tmp/mysql_error.log 2>/dev/null
     fi
 }
 
@@ -179,16 +251,28 @@ setup_config () {
     if [ "${SET_DDOS_PROTECTION}" = "no" ]; then
         sed -i "s/^ddos_count:.*/ddos_count: 999999999/" /opt/rAthena/conf/packet_athena.conf
     fi
+
+    # IP Ban configuration
+    if ! [ -z "${SET_IPBAN_ENABLE}" ]; then sed -i "s/^ipban_enable:.*/ipban_enable: ${SET_IPBAN_ENABLE}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban:.*/ipban_dynamic_pass_failure_ban: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_INTERVAL}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban_interval:.*/ipban_dynamic_pass_failure_ban_interval: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_INTERVAL}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_LIMIT}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban_limit:.*/ipban_dynamic_pass_failure_ban_limit: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_LIMIT}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_DURATION}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban_duration:.*/ipban_dynamic_pass_failure_ban_duration: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_DURATION}/" /opt/rAthena/conf/login_athena.conf; fi
+    if ! [ -z "${SET_IPBAN_CLEANUP_INTERVAL}" ]; then sed -i "s/^ipban_cleanup_interval:.*/ipban_cleanup_interval: ${SET_IPBAN_CLEANUP_INTERVAL}/" /opt/rAthena/conf/login_athena.conf; fi
 }
 
 enable_custom_npc () {
-    printf "npc: npc/custom/gab_npc.txt\n" >> /opt/rAthena/npc/scripts_custom.conf
+    if ! grep -q "npc/custom/gab_npc.txt" /opt/rAthena/npc/scripts_custom.conf; then
+        printf "npc: npc/custom/gab_npc.txt\n" >> /opt/rAthena/npc/scripts_custom.conf
+    fi
 }
 
 #PUBLICIP=$(dig +short myip.opendns.com @resolver1.opendns.com)
 
+RENEWAL_LOWER=$(echo "${RENEWAL}" | tr '[:upper:]' '[:lower:]')
+
 cd /opt/rAthena
-if ! [ -z ${DOWNLOAD_OVERRIDE_CONF_URL} ]; then 
+if ! [ -z "${DOWNLOAD_OVERRIDE_CONF_URL}" ]; then 
     wget -q ${DOWNLOAD_OVERRIDE_CONF_URL} -O /tmp/rathena_import_conf.zip
     if [ $? -eq 0 ]; then
         unzip /tmp/rathena_import_conf.zip -d /opt/rAthena/conf/import/
@@ -202,7 +286,10 @@ else
     setup_init
 fi
 
-sed -i '39,54s/^/\/\//' /opt/rAthena/npc/re/warps/cities/izlude.txt
-sed -i '94,113s/^/\/\//' /opt/rAthena/npc/re/warps/fields/prontera_fild.txt
+# Comment out Izlude re-warp NPCs and Prontera field warp (renewal files only)
+if [ "${RENEWAL_LOWER}" = "true" ] || [ "${RENEWAL_LOWER}" = "1" ] || [ "${RENEWAL_LOWER}" = "yes" ]; then
+    sed -i '39,54s/^/\/\//' /opt/rAthena/npc/re/warps/cities/izlude.txt
+    sed -i '94,113s/^/\/\//' /opt/rAthena/npc/re/warps/fields/prontera_fild.txt
+fi
 
 exec "$@"

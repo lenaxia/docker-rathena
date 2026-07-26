@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mariadb:11.4
+    container_name: rathena-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: rathena_renewal
+      MYSQL_USER: rathena
+      MYSQL_PASSWORD: rathena_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rathena-net
+
+  rathena-renewal:
+    image: ghcr.io/lenaxia/docker-rathena:packetver20200401-renewal-20251220@sha256:9cfd0a063bb9a61e094d79eae1f7823f70aef0f6f4948b0178169792e4b307b5
+    container_name: rathena-renewal
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "6900:6900"  # Login server
+      - "6121:6121"  # Char server
+      - "5121:5121"  # Map server
+      - "8888:8888"  # Web server
+    restart: unless-stopped
+    environment:
+      # Database connection
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: rathena_renewal
+      MYSQL_USERNAME: rathena
+      MYSQL_PASSWORD: rathena_pass
+      MYSQL_ROOT_PASSWORD: rootpassword
+
+      # Server mode (CRITICAL: Set to true for Renewal)
+      RENEWAL: "true"
+
+      # Server configuration (matching Helm)
+      SET_SERVER_NAME: "rAthena"
+      SET_INTERSRV_USERID: s1
+      SET_INTERSRV_PASSWD: p1
+
+      # Server IPs (localhost for local development)
+      SET_CHAR_PUBLIC_IP: 127.0.0.1
+      SET_MAP_PUBLIC_IP: 127.0.0.1
+      SET_MAP_TO_CHAR_IP: 127.0.0.1
+
+      # Network mapping (localhost version)
+      ADD_SUBNET_MAP1: "255.255.255.255:127.0.0.1"
+
+      # Gameplay settings
+      SET_PINCODE_ENABLED: "no"
+      SET_START_POINT: prontera,155,182
+
+      # IP Ban / Auto-Ban settings (disable for local testing/development)
+      SET_IPBAN_ENABLE: "no"  # Set to "yes" to enable IP ban features
+      SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN: "no"  # Set to "yes" to enable auto-ban on failed logins
+      # SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_INTERVAL: 5
+      # SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_LIMIT: 7
+      # SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN_DURATION: 5
+      # SET_IPBAN_CLEANUP_INTERVAL: 60
+
+      # Database options
+      MYSQL_DROP_DB: ${MYSQL_DROP_DB:-0}  # Set to 1 to recreate database on restart
+      MYSQL_ACCOUNTSANDCHARS: ${MYSQL_ACCOUNTSANDCHARS:-1}  # Create test accounts and characters
+
+      # GM Account configuration (set in .env file)
+      GM1_USER: ${GM1_USER:-Admin}
+      GM1_PASS: ${GM1_PASS:-Melon.77}
+      GM1_CHAR: ${GM1_CHAR:-Admin}
+      GM1_EMAIL: ${GM1_EMAIL:-admin@ragnarok.com}
+      GM2_USER: ${GM2_USER:-Almarc}
+      GM2_PASS: ${GM2_PASS:-Melon.77}
+      GM2_CHAR: ${GM2_CHAR:-Almarc}
+      GM2_EMAIL: ${GM2_EMAIL:-almarc@ragnarok.com}
+      GM_SEX: ${GM_SEX:-M}
+
+    networks:
+      - rathena-net
+
+  # Optional: Classic/Pre-Renewal server (comment out if not needed)
+  # rathena-classic:
+  #   image: ghcr.io/lenaxia/docker-rathena:classic-latest
+  #   container_name: rathena-classic
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+  #   ports:
+  #     - "7900:6900"  # Login server
+  #     - "7121:6121"  # Char server
+  #     - "7121:5121"  # Map server
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_HOST: mysql
+  #     MYSQL_PORT: 3306
+  #     MYSQL_DATABASE: rathena_classic
+  #     MYSQL_USERNAME: rathena
+  #     MYSQL_PASSWORD: rathena_pass
+  #     SERVER_MODE: classic
+  #     RENEWAL: "false"
+  #     SET_SERVER_NAME: "My Classic Server"
+  #     SET_INTERSRV_USERID: s1
+  #     SET_INTERSRV_PASSWD: p1
+  #     SET_CHAR_PUBLIC_IP: 127.0.0.1
+  #     SET_MAP_PUBLIC_IP: 127.0.0.1
+  #     SET_PINCODE_ENABLED: "no"
+  #     MYSQL_DROP_DB: 0
+  #     MYSQL_ACCOUNTSANDCHARS: 1
+  #   networks:
+  #     - rathena-net
+
+volumes:
+  mysql-data:
+    driver: local
+
+networks:
+  rathena-net:
+    driver: bridge
