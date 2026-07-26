@@ -65,7 +65,9 @@ jobs:
             MATRIX='{"include":[{"rathena_commit":"${{ github.event.inputs.rathena_commit }}","packet_version":"${{ github.event.inputs.packet_version }}","server_mode":"${{ github.event.inputs.server_mode }}","renewal":"'"${RENEWAL}"'","platforms":"${{ github.event.inputs.platforms }}"}]}'
           else
             # For scheduled/auto builds, use predefined matrix
-            MATRIX='{"include":[{"rathena_commit":"master","packet_version":"20200401","server_mode":"classic","renewal":"false","platforms":"linux/amd64"},{"rathena_commit":"master","packet_version":"20200401","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"},{"rathena_commit":"master","packet_version":"20151104","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"}]}'
+            # RATHENA_COMMIT pinned to 0c3ca757 (2026-07-24) for reproducible
+            # builds — patches are verified against this commit via grep.
+            MATRIX='{"include":[{"rathena_commit":"0c3ca757","packet_version":"20200401","server_mode":"classic","renewal":"false","platforms":"linux/amd64"},{"rathena_commit":"0c3ca757","packet_version":"20200401","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"},{"rathena_commit":"0c3ca757","packet_version":"20151104","server_mode":"renewal","renewal":"true","platforms":"linux/amd64"}]}'
           fi
 
           echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
@@ -109,7 +111,7 @@ jobs:
           fi
 
           # Add latest tag for main branch builds
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]] && [[ "${{ matrix.rathena_commit }}" == "master" ]] && [[ "${{ matrix.packet_version }}" == "20200401" ]]; then
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] && [[ "${{ matrix.packet_version }}" == "20200401" ]]; then
             if [[ "${{ matrix.server_mode }}" == "classic" ]]; then
               TAGS="${TAGS},ghcr.io/${{ github.repository }}:latest"
               TAGS="${TAGS},ghcr.io/${{ github.repository }}:classic-latest"
