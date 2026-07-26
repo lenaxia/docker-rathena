@@ -244,6 +244,14 @@ setup_config () {
     if ! [ -z "${SET_LOG_FILTER}" ]; then sed -i "s/^log_filter:.*/log_filter: ${SET_LOG_FILTER}/" /opt/rAthena/conf/login_athena.conf; fi
     if ! [ -z "${SET_LOG_CHAT}" ]; then sed -i "s/^log_chat:.*/log_chat: ${SET_LOG_CHAT}/" /opt/rAthena/conf/login_athena.conf; fi
 
+    # DDoS protection: disabled by default for bot load-testing (rAthena's
+    # default is 5 connections in 3s = 10min ban, which blocks bot fleets).
+    # Set SET_DDOS_PROTECTION=yes to re-enable.
+    if [ -z "${SET_DDOS_PROTECTION}" ]; then SET_DDOS_PROTECTION="no"; fi
+    if [ "${SET_DDOS_PROTECTION}" = "no" ]; then
+        sed -i "s/^ddos_count:.*/ddos_count: 999999999/" /opt/rAthena/conf/packet_athena.conf
+    fi
+
     # IP Ban configuration
     if ! [ -z "${SET_IPBAN_ENABLE}" ]; then sed -i "s/^ipban_enable:.*/ipban_enable: ${SET_IPBAN_ENABLE}/" /opt/rAthena/conf/login_athena.conf; fi
     if ! [ -z "${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN}" ]; then sed -i "s/^ipban_dynamic_pass_failure_ban:.*/ipban_dynamic_pass_failure_ban: ${SET_IPBAN_DYNAMIC_PASS_FAILURE_BAN}/" /opt/rAthena/conf/login_athena.conf; fi

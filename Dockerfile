@@ -36,14 +36,15 @@ LABEL DOWNLOAD_OVERRIDE_CONF_URL="If defined, it will download a ZIP file with t
   SET_START_ITEMS_DORAM="Starting items for new character from Doram race." \
   SET_PINCODE_ENABLED="Whatever a PINCODE only inputable by mouse is asked to the player. If we are testing bots this should be disabled." \
   SET_ALLOWED_REGS="How many new characters registration are we going to allow per time unit." \
-  SET_TIME_ALLOWED="Amount of time in seconds for allowing characters registration"
+  SET_TIME_ALLOWED="Amount of time in seconds for allowing characters registration" \
+  SET_DDOS_PROTECTION="Enable rAthena DDoS connect_check (default: no). When enabled, 5+ connections in 3s from the same IP triggers a 10min ban. Disable for bot load-testing."
 
 # Build arguments
 ARG PACKETVER=20200401
 ARG PACKET_OBFUSCATION=0
 ARG SERVER_MODE=classic
 ARG RENEWAL=false
-ARG RATHENA_COMMIT=master
+ARG RATHENA_COMMIT=0c3ca757
 
 # Environment variables (defaults from build args)
 ENV PACKETVER=${PACKETVER}
@@ -73,6 +74,25 @@ RUN apt-get update && \
 RUN git clone https://github.com/rathena/rathena.git /opt/rAthena && \
     cd /opt/rAthena && \
     git checkout ${RATHENA_COMMIT}
+
+# Apply patches for bot load-testing stability:
+# 1. status_get_hpbonus: null-check sd after map_id2sd (race: register sync
+#    arrives before session is fully initialized → SIGSEGV)
+# 2. status_calc_pc_sub: skip recalc if session not initialized (base_status.max_hp == 0)
+# 3. pc_setparam SP_PCDIECOUNTER: guard status_calc_pc call (sd->bonus.hp must be populated)
+#
+# Each patch is verified with grep after application — the build fails if any
+# upstream refactoring causes a pattern to no longer match.
+RUN cd /opt/rAthena && \
+    sed -i '/map_session_data \*sd = map_id2sd(bl->id);/{n;s/return 0;/if( sd == nullptr ){ ShowError("status_get_hpbonus: sd is null for bl->id=%d\\n", bl->id); return 0; }/}' \
+        src/map/status.cpp && \
+    grep -q 'sd is null' src/map/status.cpp || { echo 'FATAL: patch 1 (status_get_hpbonus null-check) did not apply — upstream source has changed'; exit 1; } && \
+    sed -i '/if (++calculating > 10) \/\/ Too many recursive calls!/{n;s/return -1;/return -1; if( !(opt\&SCO_FIRST) \&\& sd->base_status.max_hp == 0 ){ --calculating; return -1; }/}' \
+        src/map/status.cpp && \
+    grep -q 'base_status.max_hp == 0' src/map/status.cpp || { echo 'FATAL: patch 2 (status_calc_pc_sub init guard) did not apply — upstream source has changed'; exit 1; } && \
+    sed -i 's/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_UPPERMASK) == MAPID_SUPER_NOVICE)/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_UPPERMASK) == MAPID_SUPER_NOVICE \&\& sd->bonus.hp != 0)/' \
+        src/map/pc.cpp && \
+    grep -q 'sd->bonus.hp != 0' src/map/pc.cpp || { echo 'FATAL: patch 3 (pc_setparam PCDIECOUNTER guard) did not apply — upstream source has changed'; exit 1; }
 
 # Copy essential SQL files from the cloned repository (YAML mode - minimal SQL required)
 RUN mkdir -p /opt/sql && \
