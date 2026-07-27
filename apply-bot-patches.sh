@@ -23,7 +23,8 @@ fi
 
 # Patch 3: pc_setparam SP_PCDIECOUNTER — guard status_calc_pc call.
 # Only Super Novice characters with die_counter==1 trigger this path.
-sed -i 's/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_UPPERMASK) == MAPID_SUPER_NOVICE)/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_UPPERMASK) == MAPID_SUPER_NOVICE \&\& sd->bonus.hp != 0)/' src/map/pc.cpp
+# Note: upstream uses MAPID_SECONDMASK (not MAPID_UPPERMASK) at this site.
+sed -i 's/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_SECONDMASK) == MAPID_SUPER_NOVICE)/if (!sd->state.connect_new \&\& sd->die_counter == 1 \&\& (sd->class_\&MAPID_SECONDMASK) == MAPID_SUPER_NOVICE \&\& sd->bonus.hp != 0)/' src/map/pc.cpp
 if ! grep -q 'sd->bonus.hp != 0' src/map/pc.cpp; then
     echo 'FATAL: patch 3 (pc_setparam PCDIECOUNTER guard) did not apply — upstream source has changed' >&2
     exit 1
